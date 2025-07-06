@@ -1,116 +1,75 @@
 import { NextResponse } from 'next/server';
 import sharp from 'sharp';
 
-export async function POST(request) {
-	const { imageUrl } = await request.json();
-	if (!imageUrl) {
-		return NextResponse.json({ error: 'imageUrl is required' }, { status: 400 });
-	}
+export async function POST(req) {
 	try {
-		// fetch image from URL
+		const { imageUrl } = await req.json();
+
+		if (!imageUrl) {
+			return NextResponse.json({ error: 'imageUrl is required' }, { status: 400 });
+		}
+
+		// fetch image
 		const response = await fetch(imageUrl);
 		if (!response.ok) {
 			throw new Error(`Failed to fetch image: ${response.status}`);
 		}
-		const arrayBuffer = await response.arrayBuffer();
-		const inputBuffer = Buffer.from(arrayBuffer);
-		// process: remove only surrounding white background
-		const outputBuffer = await sharp(inputBuffer)
+
+		const inputBuffer = Buffer.from(await response.arrayBuffer());
+
+		// process with sharp to raw RGBA
+		const { data, info } = await sharp(inputBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+		const threshold = 250;
+		const newData = Buffer.from(data);
+
+		// step 1: make white pixels transparent
+		for (let i = 0; i < newData.length; i += 4) {
+			const r = newData[i];
+			const g = newData[i + 1];
+			const b = newData[i + 2];
+			if (r >= threshold && g >= threshold && b >= threshold) {
+				newData[i + 3] = 0;
+			}
+		}
+
+		// step 2: create transparent PNG from updated pixels
+		const transparentBuffer = await sharp(newData, {
+			raw: {
+				width: info.width,
+				height: info.height,
+				channels: 4,
+			},
+		})
 			.png()
-			.ensureAlpha()
-			.toColourspace('rgba')
-			.raw()
-			.toBuffer({ resolveWithObject: true })
-			.then(({ data, info }) => {
-				const { width, height, channels } = info;
-				const visited = new Uint8Array(width * height);
-				const queue = [];
-				const isWhite = (r, g, b) => r > 240 && g > 240 && b > 240;
-				const markTransparent = (x, y) => {
-					const idx = (y * width + x) * channels;
-					data[idx + 3] = 0;
-				};
-				const hasNonWhiteNeighbor = (x, y) => {
-					const dirs = [
-						[1, 0],
-						[-1, 0],
-						[0, 1],
-						[0, -1],
-						[1, 1],
-						[-1, -1],
-						[1, -1],
-						[-1, 1],
-					];
-					for (const [dx, dy] of dirs) {
-						const nx = x + dx;
-						const ny = y + dy;
-						if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-						const nidx = (ny * width + nx) * channels;
-						const r = data[nidx];
-						const g = data[nidx + 1];
-						const b = data[nidx + 2];
-						if (!isWhite(r, g, b)) {
-							return true;
-						}
-					}
-					return false;
-				};
-				const enqueueIfWhite = (x, y) => {
-					if (x < 0 || y < 0 || x >= width || y >= height) return;
-					const i = y * width + x;
-					if (visited[i]) return;
-					const idx = i * channels;
-					const r = data[idx];
-					const g = data[idx + 1];
-					const b = data[idx + 2];
-					if (isWhite(r, g, b)) {
-						visited[i] = 1;
-						queue.push({ x, y });
-					}
-				};
-				// enqueue corners
-				enqueueIfWhite(0, 0);
-				enqueueIfWhite(width - 1, 0);
-				enqueueIfWhite(0, height - 1);
-				enqueueIfWhite(width - 1, height - 1);
-				while (queue.length > 0) {
-					const { x, y } = queue.shift();
-					// if it has a non-white neighbor, consider it part of content — skip
-					if (hasNonWhiteNeighbor(x, y)) {
-						continue;
-					}
-					markTransparent(x, y);
-					enqueueIfWhite(x + 1, y);
-					enqueueIfWhite(x - 1, y);
-					enqueueIfWhite(x, y + 1);
-					enqueueIfWhite(x, y - 1);
-				}
-				// reconstruct
-				return sharp(data, { raw: { width, height, channels } })
-					.png()
-					.toBuffer()
-					.then(async (buffer) => {
-						const trimmed = await sharp(buffer).trim().toBuffer();
-						const trimmedMetadata = await sharp(trimmed).metadata();
-						const canvasSize = Math.max(trimmedMetadata.width, trimmedMetadata.height);
-						const canvas = sharp({
-							create: {
-								width: canvasSize,
-								height: canvasSize,
-								channels: 4,
-								background: { r: 0, g: 0, b: 0, alpha: 0 },
-							},
-						});
-						const left = Math.floor((canvasSize - trimmedMetadata.width) / 2);
-						const top = Math.floor((canvasSize - trimmedMetadata.height) / 2);
-						const final = await canvas
-							.composite([{ input: trimmed, left, top }])
-							.png()
-							.toBuffer();
-						return final;
-					});
-			});
-		return new NextResponse(outputBuffer, {
+			.toBuffer();
+
+		// step 3: trim (crop) to bounding box of visible pixels
+		const trimmedBuffer = await sharp(transparentBuffer).trim().toBuffer();
+		const trimmedMetadata = await sharp(trimmedBuffer).metadata();
+
+		// step 4: center on square canvas
+		const canvasSize = Math.max(trimmedMetadata.width, trimmedMetadata.height);
+
+		const finalBuffer = await sharp({
+			create: {
+				width: canvasSize,
+				height: canvasSize,
+				channels: 4,
+				background: { r: 0, g: 0, b: 0, alpha: 0 },
+			},
+		})
+			.composite([
+				{
+					input: trimmedBuffer,
+					left: Math.floor((canvasSize - trimmedMetadata.width) / 2),
+					top: Math.floor((canvasSize - trimmedMetadata.height) / 2),
+				},
+			])
+			.png()
+			.toBuffer();
+
+		return new NextResponse(finalBuffer, {
 			status: 200,
 			headers: {
 				'Content-Type': 'image/png',
