@@ -1,6 +1,22 @@
 import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 
+const fixUrl = (path, baseUrl) => {
+    if (!path) return '';
+    if (path.startsWith('//')) {
+        return 'https:' + path;
+    }
+    if (path.startsWith('/')) {
+        try {
+            const origin = new URL(baseUrl).origin;
+            return origin + path;
+        } catch (e) {
+            return path; // if baseUrl is invalid
+        }
+    }
+    return path;
+}
+
 export async function POST(request) {
   const { url } = await request.json();
 
@@ -14,7 +30,7 @@ export async function POST(request) {
     const $ = cheerio.load(html);
 
     const title = $('h1.product-title').text().trim();
-    const image = $('.main-image img').first().attr('src') || '';
+    const image = fixUrl($('.main-image img').first().attr('src'), url);
 
     const goesWellWith = [];
     const youMayAlsoLike = [];
@@ -25,8 +41,8 @@ export async function POST(request) {
         productGrid.find('.product-block').each((j, productEl) => {
           const productBlock = $(productEl);
           const productTitle = productBlock.find('.product-block__title').text().trim();
-          const productImage = productBlock.find('.product-block__image--primary img').attr('src') || '';
-          const productUrl = 'https://www.tonicliving.com' + productBlock.find('a.product-link').attr('href');
+          const productImage = fixUrl(productBlock.find('.product-block__image--primary img').attr('src'), url);
+          const productUrl = fixUrl(productBlock.find('a.product-link').attr('href'), url);
           if (productTitle && productImage && productUrl) {
             goesWellWith.push({
                 title: productTitle,
@@ -43,8 +59,8 @@ export async function POST(request) {
         productGrid.find('.product-block').each((j, productEl) => {
           const productBlock = $(productEl);
           const productTitle = productBlock.find('.product-block__title').text().trim();
-          const productImage = productBlock.find('.product-block__image--primary img').attr('src') || '';
-          const productUrl = 'https://www.tonicliving.com' + productBlock.find('a.product-link').attr('href');
+          const productImage = fixUrl(productBlock.find('.product-block__image--primary img').attr('src'), url);
+          const productUrl = fixUrl(productBlock.find('a.product-link').attr('href'), url);
           if (productTitle && productImage && productUrl) {
             youMayAlsoLike.push({
                 title: productTitle,
@@ -55,7 +71,15 @@ export async function POST(request) {
         });
     });
 
-    return NextResponse.json({ title, image, goesWellWith, youMayAlsoLike });
+	const mainProduct = {
+		title,
+		image,
+		url,
+		goesWellWith,
+		youMayAlsoLike,
+	};
+
+	return NextResponse.json({ mainProduct });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Failed to scrape the website' }, { status: 500 });
