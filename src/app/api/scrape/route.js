@@ -32,6 +32,9 @@ export async function POST(request) {
     const title = $('h1.product-title').text().trim();
     const image = fixUrl($('.main-image img').first().attr('src'), url);
 
+    console.log('Scraped Title:', title);
+    console.log('Scraped Image URL:', image);
+
     const goesWellWith = [];
     const youMayAlsoLike = [];
 
@@ -53,6 +56,8 @@ export async function POST(request) {
         });
     });
 
+    console.log('Scraped Goes Well With:', goesWellWith);
+
     // Scrape "You May Also Like" section
     $('h2.hometitle:has(span:contains("You May Also Like"))').each((i, el) => {
         const productGrid = $(el).closest('.collection-slider-row').find('.product-grid').first();
@@ -70,6 +75,8 @@ export async function POST(request) {
           }
         });
     });
+
+    console.log('Scraped You May Also Like:', youMayAlsoLike);
 
 	const mainProduct = {
 		title,
