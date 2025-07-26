@@ -4,9 +4,10 @@ import { BringToFront, SendToBack, ShoppingCart, Trash2 } from 'lucide-react';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 
 import Draggable from 'react-draggable';
+import { Skeleton } from '../ui/skeleton';
 import { useRef } from 'react';
 
-export default function DraggableImage({ img, onStop, onDrag, onClick, isSelected, onBringToFront, onSendToBack, onDeleteImage, addToCart }) {
+export default function DraggableImage({ img, onStop, onDrag, onClick, isSelected, onBringToFront, onSendToBack, onDeleteItem, addToCart }) {
 	const nodeRef = useRef(null);
 	return (
 		<Draggable nodeRef={nodeRef} position={{ x: img.x, y: img.y }} onStop={(e, ui) => onStop(e, ui, img.id)} onDrag={(e, ui) => onDrag(e, ui, img.id)}>
@@ -27,13 +28,13 @@ export default function DraggableImage({ img, onStop, onDrag, onClick, isSelecte
 						}}>
 						{' '}
 						<img
-							src={img.isProcessing ? img.originalSrc : img.src} // Use originalSrc for processing overlay
+							src={img.isProcessing ? img.originalSrc : img.src} // Use dataUrl for persistence, fallback to src
 							alt={img.alt}
 							className={`w-full h-full object-cover ${isSelected ? 'border-2 border-blue-500' : ''}`}
 						/>
 						{img.isProcessing && (
-							<div className='absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center'>
-								<p className='text-white'>Processing...</p>
+							<div className='absolute inset-0 flex items-center justify-center'>
+								<Skeleton className='h-full w-full rounded-xl' />
 							</div>
 						)}
 					</ContextMenuTrigger>
@@ -56,7 +57,7 @@ export default function DraggableImage({ img, onStop, onDrag, onClick, isSelecte
 								Add to Cart (without insert)
 							</ContextMenuItem>
 						)}
-						<ContextMenuItem onClick={() => onDeleteImage(img.id)} className='text-red-500 focus:text-red-500'>
+						<ContextMenuItem onClick={() => onDeleteItem(img.id)} className='text-red-500 focus:text-red-500'>
 							<Trash2 className='mr-2 h-4 w-4' /> Delete
 						</ContextMenuItem>
 					</ContextMenuContent>

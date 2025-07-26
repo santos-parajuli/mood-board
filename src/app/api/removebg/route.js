@@ -38,7 +38,6 @@ export async function POST(req) {
 
 			const avgBrightness = totalBrightness / count;
 			threshold = avgBrightness > 222 ? 250 : avgBrightness > 200 ? 240 : avgBrightness > 180 ? 230 : avgBrightness > 160 ? 220 : 210;
-			console.log(`Dynamic threshold: ${threshold}, Avg brightness: ${avgBrightness}`);
 		}
 
 		// Step 2: Make white pixels transparent based on threshold

@@ -15,7 +15,6 @@ export function parseAndLookupRelatedItems(text, allXlsxData) {
 			if (match) {
 				const title = match[1].trim();
 				const foundProduct = allXlsxData.find((xlsxItem) => xlsxItem.Name === title);
-				console.log(title, foundProduct);
 				if (foundProduct) {
 					return {
 						title: foundProduct.Name,

@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Tonic Moodboard
+
+Tonic Moodboard is a web application that allows users to create and customize mood boards with pillows and text. Users can select pillows from a predefined list, arrange them on a canvas, add text, and export their creations as a PDF.
+
+## Features
+
+-   **Create and Manage Moodboards**: Users can create multiple mood boards, switch between them, and delete them.
+-   **Add and Customize Pillows**: Add pillows to the canvas from a searchable list.
+-   **Add and Customize Text**: Add text elements to the canvas, with options to change the font weight and size.
+-   **Drag and Drop**: Easily arrange pillows and text on the canvas using drag and drop.
+-   **Remove Background**: Automatically remove the background from pillow images.
+-   **Export to PDF**: Download mood boards as a high-quality PDF file.
+-   **Load from File**: Load mood boards from JSON or PDF files.
+-   **Responsive Design**: The application is designed to work on various screen sizes.
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+-   Node.js (v14 or later)
+-   npm or yarn
+
+### Installation
+
+1. Clone the repository:
+    ```bash
+    git clone https://github.com/your-username/tonic-moodboard.git
+    ```
+2. Navigate to the project directory:
+    ```bash
+    cd tonic-moodboard
+    ```
+3. Install the dependencies:
+    ```bash
+    npm install
+    ```
+
+### Running the Application
+
+To run the application in development mode, use the following command:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser to view the application.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Usage
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+-   **Create a Moodboard**: Click the "+" button in the header to create a new moodboard.
+-   **Select a Pillow**: Use the dropdown menu to search for and select a pillow to add to the gallery.
+-   **Add to Canvas**: Drag and drop pillows from the gallery to the canvas, or double-click to add them.
+-   **Add Text**: Click the "Add Text" button in the settings panel to add a new text element to the canvas.
+-   **Customize Items**: Right-click on an item on the canvas to open the context menu, where you can bring it to the front, send it to the back, or delete it.
+-   **Download**: Click the "Download All Mood Boards" button to export all your mood boards as a single PDF file.
+-   **Load**: Click the "Load from file" button in the settings panel to load a moodboard from a JSON or PDF file.
 
-## Learn More
+## API Endpoints
 
-To learn more about Next.js, take a look at the following resources:
+-   `POST /api/removebg`: Removes the background from an image.
+    -   **Body**: `{ "imageUrl": "image-url" }`
+-   `POST /api/scrape`: Scrapes a website for product information.
+    -   **Body**: `{ "url": "product-url" }`
+-   `GET /api/xlsx`: Fetches data from an XLSX file.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Technologies Used
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+-   [Next.js](https://nextjs.org/) - React framework for building server-side rendered and static web applications.
+-   [Tailwind CSS](https://tailwindcss.com/) - A utility-first CSS framework for rapid UI development.
+-   [Zustand](https://github.com/pmndrs/zustand) - A small, fast, and scalable state-management solution for React.
+-   [jsPDF](https://github.com/parallax/jsPDF) - A library to generate PDFs in JavaScript.
+-   [html2canvas](https://html2canvas.hertzen.com/) - A library to take "screenshots" of webpages or parts of it, directly on the users browser.
+-   [Cheerio](https://cheerio.js.org/) - A fast, flexible, and lean implementation of core jQuery designed specifically for the server.
+-   [Sharp](https.://sharp.pixelplumbing.com/) - A high-performance Node.js image processing library.
 
-## Deploy on Vercel
+## Contributing
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Contributions are welcome! Please feel free to submit a pull request or open an issue to discuss any changes.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

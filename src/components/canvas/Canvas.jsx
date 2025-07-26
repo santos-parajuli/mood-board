@@ -1,16 +1,21 @@
 'use client';
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 
 import DraggableImage from './DraggableImage';
+import DraggableText from './DraggableText';
+import useMoodboardStore from '../../store/moodboardStore';
 
 const DEFAULT_INITIAL_CANVAS_IMAGE_SIZE = 100;
 const PIXELS_PER_UNIT = 10;
 
-const Canvas = forwardRef(({ canvasImages, setCanvasImages, selectedImageId, setSelectedImageId, zoomLevel }, ref) => {
+const Canvas = forwardRef((props, ref) => {
+	const { getMoodboardState, setMoodboardState, selectedItemId, setSelectedItemId, addCanvasImage, deleteCanvasItem, updateCanvasImage, updateCanvasText } = useMoodboardStore();
+	const activeMoodboard = getMoodboardState();
+	const canvasImages = activeMoodboard?.canvasImages || [];
+	const canvasTexts = activeMoodboard?.canvasTexts || [];
 	const canvasRef = useRef(null);
 	const addImageToCanvas = async (item, dropPosition) => {
-		console.log(item);
 		let imageSrc = item.image || item.src;
 		if (!imageSrc) {
 			console.warn('Item has no image source.');
@@ -73,28 +78,31 @@ const Canvas = forwardRef(({ canvasImages, setCanvasImages, selectedImageId, set
 			originalHeight,
 			baseWidth: initialWidth,
 			baseHeight: initialHeight,
-			currentWidth: initialWidth * zoomLevel,
-			currentHeight: initialHeight * zoomLevel,
+			currentWidth: initialWidth,
+			currentHeight: initialHeight,
 			pillowUrl: item.url,
 			withInsertID: item.withInsertID,
 			withoutInsertID: item.withoutInsertID,
 		};
 
-		setCanvasImages((prevImages) => [...prevImages, newImage]);
-		setSelectedImageId(newImage.id);
+		addCanvasImage(newImage);
+		setSelectedItemId(newImage.id);
 		handleRemoveBackground(newImage.id, newImage.src);
 	};
 
 	useImperativeHandle(ref, () => ({
 		addImageToCanvas,
+		handleRemoveBackground,
 	}));
 
 	const handleDragStop = (e, ui, id) => {
-		setCanvasImages((prevImages) => prevImages.map((img) => (img.id === id ? { ...img, x: ui.x, y: ui.y } : img)));
+		updateCanvasImage(id, { x: ui.x, y: ui.y });
+		updateCanvasText(id, { x: ui.x, y: ui.y });
 	};
 
 	const handleDrag = (e, ui, id) => {
-		setCanvasImages((prevImages) => prevImages.map((img) => (img.id === id ? { ...img, x: ui.x, y: ui.y } : img)));
+		updateCanvasImage(id, { x: ui.x, y: ui.y });
+		updateCanvasText(id, { x: ui.x, y: ui.y });
 	};
 
 	const handleImageDrop = (e) => {
@@ -110,21 +118,18 @@ const Canvas = forwardRef(({ canvasImages, setCanvasImages, selectedImageId, set
 		};
 		addImageToCanvas(item, { x: e.clientX, y: e.clientY });
 	};
-	const handleCanvasImageClick = (id) => {
-		setSelectedImageId(id);
+	const handleCanvasItemClick = (id) => {
+		setSelectedItemId(id);
 	};
 	const handleCanvasClick = () => {
-		setSelectedImageId(null);
+		setSelectedItemId(null);
 	};
 	const addToCart = (id) => {
-		console.log(`Adding variant ${id} to cart and updating session cookies…`);
 		const cartUrl = `https://www.tonicliving.ca/cart/add?id=${id}&quantity=1`;
 		const newTab = window.open(cartUrl, '_blank', 'noopener');
-		console.log(newTab);
 		if (newTab) {
 			setTimeout(() => {
 				newTab.close();
-				console.log('Tab closed after setting cookies.');
 			}, 1500); // 1.5s to allow cart cookies to set
 		} else {
 			console.error('Failed to open tab (popup blocker?)');
@@ -132,26 +137,25 @@ const Canvas = forwardRef(({ canvasImages, setCanvasImages, selectedImageId, set
 	};
 
 	const bringToFront = (id) => {
-		setCanvasImages((prevImages) => {
-			const imageToMove = prevImages.find((img) => img.id === id);
-			if (!imageToMove) return prevImages;
-			const filteredImages = prevImages.filter((img) => img.id !== id);
-			return [...filteredImages, imageToMove];
-		});
+		const activeMoodboard = getMoodboardState();
+		if (!activeMoodboard) return;
+		const imageToMove = activeMoodboard.canvasImages.find((img) => img.id === id);
+		if (!imageToMove) return;
+		const filteredImages = activeMoodboard.canvasImages.filter((img) => img.id !== id);
+		setMoodboardState({ canvasImages: [...filteredImages, imageToMove] });
 	};
 
 	const sendToBack = (id) => {
-		setCanvasImages((prevImages) => {
-			const imageToMove = prevImages.find((img) => img.id === id);
-			if (!imageToMove) return prevImages;
-			const filteredImages = prevImages.filter((img) => img.id !== id);
-			return [imageToMove, ...filteredImages];
-		});
+		const activeMoodboard = getMoodboardState();
+		if (!activeMoodboard) return;
+		const imageToMove = activeMoodboard.canvasImages.find((img) => img.id === id);
+		if (!imageToMove) return;
+		const filteredImages = activeMoodboard.canvasImages.filter((img) => img.id !== id);
+		setMoodboardState({ canvasImages: [imageToMove, ...filteredImages] });
 	};
 
 	const handleRemoveBackground = async (id, src) => {
-		setCanvasImages((prevImages) => prevImages.map((img) => (img.id === id ? { ...img, isProcessing: true } : img)));
-
+		updateCanvasImage(id, { isProcessing: true });
 		try {
 			const response = await fetch('/api/removebg', {
 				method: 'POST',
@@ -160,11 +164,9 @@ const Canvas = forwardRef(({ canvasImages, setCanvasImages, selectedImageId, set
 				},
 				body: JSON.stringify({ imageUrl: src }),
 			});
-
 			if (!response.ok) {
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
-
 			const blob = await response.blob();
 			const url = URL.createObjectURL(blob);
 
@@ -172,71 +174,89 @@ const Canvas = forwardRef(({ canvasImages, setCanvasImages, selectedImageId, set
 			reader.readAsDataURL(blob);
 			reader.onloadend = () => {
 				const base64data = reader.result;
-				setCanvasImages((prevImages) => prevImages.map((img) => (img.id === id ? { ...img, src: url, dataUrl: base64data, isProcessing: false } : img)));
+				updateCanvasImage(id, { src: url, dataUrl: base64data, isProcessing: false });
 			};
 		} catch (error) {
 			console.error('Failed to remove background:', error);
-			setCanvasImages((prevImages) => prevImages.map((img) => (img.id === id ? { ...img, isProcessing: false } : img)));
+			updateCanvasImage(id, { isProcessing: false });
 		}
 	};
 
 	useEffect(() => {
-		if (selectedImageId && canvasRef.current) {
+		if (selectedItemId && canvasRef.current) {
 			canvasRef.current.focus();
 		}
-	}, [selectedImageId]);
+	}, [selectedItemId]);
 
 	useEffect(() => {
 		const MOVE_AMOUNT = 5;
 		const SMALL_MOVE_AMOUNT = 1;
 
 		const handleKeyDown = (e) => {
-			if (selectedImageId) {
-				const moveBy = e.shiftKey ? SMALL_MOVE_AMOUNT : MOVE_AMOUNT;
-				let updated = false;
-				setCanvasImages((prevImages) => {
-					const newImages = prevImages.map((img) => {
-						if (img.id === selectedImageId) {
-							let newX = img.x;
-							let newY = img.y;
+			if (!selectedItemId) return;
 
-							switch (e.key) {
-								case 'ArrowUp':
-									newY -= moveBy;
-									updated = true;
-									break;
-								case 'ArrowDown':
-									newY += moveBy;
-									updated = true;
-									break;
-								case 'ArrowLeft':
-									newX -= moveBy;
-									updated = true;
-									break;
-								case 'ArrowRight':
-									newX += moveBy;
-									updated = true;
-									break;
-								case 'Delete':
-								case 'Backspace':
-									updated = true;
-									return null;
-								default:
-									return img;
-							}
-							return { ...img, x: newX, y: newY };
-						}
-						return img;
-					});
+			const isText = typeof selectedItemId === 'string' && selectedItemId.startsWith('text-');
 
-					if (updated) {
-						e.preventDefault();
-						if (e.key === 'Delete' || e.key === 'Backspace') {
-							setSelectedImageId(null);
-						}
-					}
-					return newImages.filter(Boolean);
-				});
+			// Handle Delete/Backspace for both images and text
+			if (e.key === 'Delete' || e.key === 'Backspace') {
+				// If it's a text item and Shift is pressed, delete the whole block
+				if (isText && e.shiftKey) {
+					e.preventDefault();
+					deleteCanvasItem(selectedItemId);
+					return;
+				} else if (!isText) {
+					// If it's an image, delete the whole block
+					e.preventDefault();
+					deleteCanvasItem(selectedItemId);
+					return;
+				}
+				// For text, if not Shift+Delete, let the input handle character deletion
+				return;
+			}
+
+			// Handle Cmd/Ctrl + B, =, -
+			if ((e.metaKey || e.ctrlKey) && isText) {
+				e.preventDefault();
+				if (e.key === 'b') {
+					updateCanvasText(selectedItemId, { fontWeight: canvasTexts.find((text) => text.id === selectedItemId).fontWeight === 'bold' ? 'normal' : 'bold' });
+				} else if (e.key === '=' || e.key === '+') {
+					// Check for both = and + (Shift+=)
+					updateCanvasText(selectedItemId, { fontSize: canvasTexts.find((text) => text.id === selectedItemId).fontSize + 2 });
+				} else if (e.key === '-' || e.key === '_') {
+					// Check for both - and _ (Shift+-)
+					updateCanvasText(selectedItemId, { fontSize: Math.max(8, canvasTexts.find((text) => text.id === selectedItemId).fontSize - 2) });
+				}
+				return;
+			}
+
+			const moveBy = e.shiftKey ? SMALL_MOVE_AMOUNT : MOVE_AMOUNT;
+
+			const isArrowKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+
+			if (isArrowKey) {
+				e.preventDefault();
+
+				const currentImage = canvasImages.find((img) => img.id === selectedItemId);
+				if (currentImage) {
+					let newX = currentImage.x;
+					let newY = currentImage.y;
+					if (e.key === 'ArrowUp') newY -= moveBy;
+					if (e.key === 'ArrowDown') newY += moveBy;
+					if (e.key === 'ArrowLeft') newX -= moveBy;
+					if (e.key === 'ArrowRight') newX += moveBy;
+					updateCanvasImage(selectedItemId, { x: newX, y: newY });
+				}
+
+				const currentText = canvasTexts.find((text) => text.id === selectedItemId);
+				if (currentText) {
+					let newX = currentText.x;
+					let newY = currentText.y;
+					if (e.key === 'ArrowUp') newY -= moveBy;
+					if (e.key === 'ArrowDown') newY += moveBy;
+					if (e.key === 'ArrowLeft') newX -= moveBy;
+					if (e.key === 'ArrowRight') newX += moveBy;
+					updateCanvasText(selectedItemId, { x: newX, y: newY });
+				}
 			}
 		};
 
@@ -244,11 +264,15 @@ const Canvas = forwardRef(({ canvasImages, setCanvasImages, selectedImageId, set
 		return () => {
 			window.removeEventListener('keydown', handleKeyDown);
 		};
-	}, [selectedImageId, setCanvasImages, setSelectedImageId]);
+	}, [selectedItemId, canvasImages, canvasTexts, deleteCanvasItem, updateCanvasImage, updateCanvasText]);
 
-	const handleDeleteImage = (id) => {
-		setCanvasImages((prevImages) => prevImages.filter((img) => img.id !== id));
-		setSelectedImageId(null);
+	const handleDeleteItem = (id) => {
+		deleteCanvasItem(id);
+		setSelectedItemId(null);
+	};
+
+	const handleUpdateText = (id, newProps) => {
+		updateCanvasText(id, newProps);
 	};
 
 	return (
@@ -260,23 +284,27 @@ const Canvas = forwardRef(({ canvasImages, setCanvasImages, selectedImageId, set
 			onDragOver={(e) => e.preventDefault()}
 			onClick={handleCanvasClick}
 			tabIndex={0}>
-			{canvasImages.length === 0 && <div className='flex items-center justify-center h-full text-gray-400'>Drop images here</div>}
+			{canvasImages.length === 0 && canvasTexts.length === 0 && <div className='flex items-center justify-center h-full text-gray-400'>Drop images here</div>}
 			{canvasImages.map((img) => (
 				<DraggableImage
 					key={img.id}
 					img={img}
 					onStop={handleDragStop}
 					onDrag={handleDrag}
-					onClick={handleCanvasImageClick}
-					isSelected={img.id === selectedImageId}
+					onClick={handleCanvasItemClick}
+					isSelected={img.id === selectedItemId}
 					onBringToFront={bringToFront}
 					onSendToBack={sendToBack}
-					onDeleteImage={handleDeleteImage}
+					onDeleteItem={handleDeleteItem}
 					withInsertID={img.withInsertID}
 					withoutInsertID={img.withoutInsertID}
 					addToCart={addToCart}
 				/>
 			))}
+			{Array.isArray(canvasTexts) &&
+				canvasTexts.map((text) => (
+					<DraggableText key={text.id} text={text} onStop={handleDragStop} onDrag={handleDrag} onClick={handleCanvasItemClick} isSelected={text.id === selectedItemId} onUpdateText={handleUpdateText} onDeleteItem={handleDeleteItem} />
+				))}
 		</div>
 	);
 });
