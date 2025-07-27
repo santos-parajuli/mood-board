@@ -1,31 +1,33 @@
 # Tonic Moodboard
 
-Tonic Moodboard is a web application that allows users to create and customize mood boards with pillows and text. Users can select pillows from a predefined list, arrange them on a canvas, add text, and export their creations as a PDF.
+Tonic Moodboard is a web application designed for [tonicliving.com](https://tonicliving.com) that allows designers to create and customize mood boards with pillows and text. Users can select pillows from a predefined list, arrange them on a canvas, add text, and export their creations as a PDF.
+
+**Live Demo:** [https://moodboard.siwani.com.np/](https://moodboard.siwani.com.np/)
 
 ## Features
 
--   **Create and Manage Moodboards**: Users can create multiple mood boards, switch between them, and delete them.
--   **Add and Customize Pillows**: Add pillows to the canvas from a searchable list.
--   **Add and Customize Text**: Add text elements to the canvas, with options to change the font weight and size.
--   **Drag and Drop**: Easily arrange pillows and text on the canvas using drag and drop.
--   **Remove Background**: Automatically remove the background from pillow images.
--   **Export to PDF**: Download mood boards as a high-quality PDF file.
--   **Load from File**: Load mood boards from JSON or PDF files.
--   **Responsive Design**: The application is designed to work on various screen sizes.
+- **Create and Manage Moodboards**: Designers can create multiple mood boards, switch between them, and delete them
+- **Add and Customize Pillows**: Add pillows to the canvas from a searchable list of Tonic Living products
+- **Add and Customize Text**: Add text elements with options to change font weight and size
+- **Drag and Drop**: Easily arrange elements on the canvas
+- **Remove Background**: Automatically remove backgrounds from pillow images
+- **Export to PDF**: Download mood boards as high-quality PDFs
+- **Load from File**: Import mood boards from JSON or PDF files
+- **Responsive Design**: Works across various screen sizes
 
 ## Getting Started
 
 ### Prerequisites
 
--   Node.js (v14 or later)
--   npm or yarn
+- Node.js (v14 or later)
+- npm or yarn
 
 ### Installation
 
 1. Clone the repository:
-    ```bash
-    git clone https://github.com/your-username/tonic-moodboard.git
-    ```
+```bash
+git clone https://github.com/your-username/tonic-moodboard.git
+```
 2. Navigate to the project directory:
     ```bash
     cd tonic-moodboard
