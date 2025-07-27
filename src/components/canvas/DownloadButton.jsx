@@ -309,7 +309,7 @@ const DownloadButton = () => {
 
 	return (
 		<Button onClick={handleDownload} disabled={isDownloading}>
-			{isDownloading ? 'Downloading...' : 'Download All Mood Boards'}
+			{isDownloading ? 'Downloading...' : 'Download'}
 		</Button>
 	);
 };

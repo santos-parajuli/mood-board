@@ -1,4 +1,4 @@
-import { PlusCircle, Trash2 } from 'lucide-react';
+import { PlusCircle, Trash2, TypeIcon } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { Badge } from '../ui/badge';
@@ -11,10 +11,22 @@ import useMoodboardStore from '@/store/moodboardStore';
 import { useState } from 'react';
 
 const Header = () => {
-	const { moodboards, region, activeMoodboardId, selectMoodboard, createMoodboard, deleteMoodboard, name } = useMoodboardStore();
+	const { moodboards, region, activeMoodboard, setMoodboardState, activeMoodboardId, selectMoodboard, createMoodboard, deleteMoodboard, name } = useMoodboardStore();
 
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-
+	const addText = () => {
+		const newText = {
+			id: `text-${Date.now()}`,
+			text: 'Text',
+			x: 50,
+			y: 50,
+			fontWeight: 'normal',
+			fontSize: 14,
+		};
+		setMoodboardState({
+			canvasTexts: [...(activeMoodboard?.canvasTexts || []), newText],
+		});
+	};
 	const handleCreateMoodboard = () => {
 		createMoodboard(name);
 		toast.success(`New moodboard created!`);
@@ -37,8 +49,8 @@ const Header = () => {
 
 	return (
 		<div className='p-4 border-b'>
-			<div className='flex items-center justify-between'>
-				<h1 className='text-2xl font-bold'>
+			<div className='flex md:items-center justify-between md:flex-row flex-col items-start'>
+				<h1 className='text-2xl font-bold '>
 					Mood Board
 					<sup>
 						{' '}
@@ -65,6 +77,9 @@ const Header = () => {
 					</Button>
 					<Button onClick={handleDeleteMoodboardClick} variant='outline' size='icon' disabled={moodboards.length <= 1}>
 						<Trash2 className='h-4 w-4' />
+					</Button>
+					<Button onClick={addText} variant='outline' size='icon'>
+						<TypeIcon className='h-4 w-4' />
 					</Button>
 					<Settings />
 					<DownloadButton />

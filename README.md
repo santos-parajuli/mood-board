@@ -24,7 +24,7 @@ Tonic Moodboard is a web application that allows users to create and customize m
 
 1. Clone the repository:
     ```bash
-    https://github.com/santos-parajuli/mood-board.git
+    git clone https://github.com/your-username/tonic-moodboard.git
     ```
 2. Navigate to the project directory:
     ```bash

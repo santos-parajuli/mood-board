@@ -4,6 +4,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHe
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import useCanvasStore from '@/store/canvasStore';
 import useMoodboardStore from '@/store/moodboardStore';
@@ -14,20 +15,6 @@ const Settings = () => {
 	const activeMoodboard = getMoodboardState();
 	const { canvasRef } = useCanvasStore();
 	const fileInputRef = useRef(null);
-
-	const addText = () => {
-		const newText = {
-			id: `text-${Date.now()}`,
-			text: 'Text',
-			x: 50,
-			y: 50,
-			fontWeight: 'normal',
-			fontSize: 14,
-		};
-		setMoodboardState({
-			canvasTexts: [...(activeMoodboard?.canvasTexts || []), newText],
-		});
-	};
 
 	const loadMoodboard = (event) => {
 		const file = event.target.files[0];
@@ -82,7 +69,7 @@ const Settings = () => {
 							}
 							return null;
 						});
-						await Promise.all(imagePromises.filter(p => p));
+						await Promise.all(imagePromises.filter((p) => p));
 					}
 				}
 
@@ -104,7 +91,9 @@ const Settings = () => {
 	return (
 		<Sheet>
 			<SheetTrigger asChild>
-				<Button variant='outline'>Settings</Button>
+				<Button variant='outline'>
+					<SettingsIcon className='h-4 w-4' />
+				</Button>
 			</SheetTrigger>
 			<SheetContent>
 				<SheetHeader>
@@ -128,10 +117,7 @@ const Settings = () => {
 							</SelectContent>
 						</Select>
 					</div>
-					<div className='grid gap-3'>
-						<Label>Text</Label>
-						<Button onClick={addText}>Add Text</Button>
-					</div>
+
 					<div className='grid gap-3'>
 						<Label>Load Moodboard</Label>
 						<input type='file' ref={fileInputRef} onChange={loadMoodboard} style={{ display: 'none' }} accept='.json,.pdf' />
