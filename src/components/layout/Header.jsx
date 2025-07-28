@@ -1,19 +1,13 @@
-import { PlusCircle, Trash2, TypeIcon } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
 import { Badge } from '../ui/badge';
 import { Button } from '@/components/ui/button';
-import DeleteMoodboardDialog from '../ui/DeleteMoodboardDialog';
 import DownloadButton from '../canvas/DownloadButton';
 import Settings from './Settings';
-import { toast } from 'sonner';
+import { TypeIcon } from 'lucide-react';
 import useMoodboardStore from '@/store/moodboardStore';
-import { useState } from 'react';
 
 const Header = () => {
-	const { moodboards, region, activeMoodboard, setMoodboardState, activeMoodboardId, selectMoodboard, createMoodboard, deleteMoodboard, name } = useMoodboardStore();
+	const { region, setCanvasTexts } = useMoodboardStore();
 
-	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const addText = () => {
 		const newText = {
 			id: `text-${Date.now()}`,
@@ -23,28 +17,7 @@ const Header = () => {
 			fontWeight: 'normal',
 			fontSize: 14,
 		};
-		setMoodboardState({
-			canvasTexts: [...(activeMoodboard?.canvasTexts || []), newText],
-		});
-	};
-	const handleCreateMoodboard = () => {
-		createMoodboard(name);
-		toast.success(`New moodboard created!`);
-	};
-
-	const handleDeleteMoodboardClick = () => {
-		setIsDeleteDialogOpen(true);
-	};
-
-	const handleConfirmDelete = () => {
-		if (moodboards.length <= 1) {
-			toast.error('Cannot delete the last moodboard.');
-			setIsDeleteDialogOpen(false);
-			return;
-		}
-		deleteMoodboard(activeMoodboardId);
-		toast.success('Moodboard deleted!');
-		setIsDeleteDialogOpen(false);
+		setCanvasTexts(newText);
 	};
 
 	return (
@@ -60,24 +33,6 @@ const Header = () => {
 					</sup>
 				</h1>
 				<div className='flex items-center gap-4'>
-					<Select onValueChange={selectMoodboard} value={activeMoodboardId}>
-						<SelectTrigger className='w-[180px]'>
-							<SelectValue placeholder='Select Moodboard' />
-						</SelectTrigger>
-						<SelectContent>
-							{moodboards.map((mb, index) => (
-								<SelectItem key={mb.id} value={mb.id}>
-									{name} - {index + 1}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<Button onClick={handleCreateMoodboard} variant='outline' size='icon'>
-						<PlusCircle className='h-4 w-4' />
-					</Button>
-					<Button onClick={handleDeleteMoodboardClick} variant='outline' size='icon' disabled={moodboards.length <= 1}>
-						<Trash2 className='h-4 w-4' />
-					</Button>
 					<Button onClick={addText} variant='outline' size='icon'>
 						<TypeIcon className='h-4 w-4' />
 					</Button>
@@ -85,7 +40,6 @@ const Header = () => {
 					<DownloadButton />
 				</div>
 			</div>
-			<DeleteMoodboardDialog isOpen={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)} onConfirm={handleConfirmDelete} />
 		</div>
 	);
 };

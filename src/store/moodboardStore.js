@@ -91,7 +91,17 @@ const useMoodboardStore = create((set, get) => ({
 
 	// Refactored actions to operate on the active moodboard
 	setCanvasImages: (images) => get().setMoodboardState({ canvasImages: images }),
-	setCanvasTexts: (texts) => get().setMoodboardState({ canvasTexts: texts }),
+	setCanvasTexts: (text) =>
+		set((state) => ({
+			moodboards: state.moodboards.map((mb) =>
+				mb.id === state.activeMoodboardId
+					? {
+							...mb,
+							canvasTexts: Array.isArray(mb.canvasTexts) ? [...mb.canvasTexts, text] : [text],
+					  }
+					: mb
+			),
+		})),
 	setSelectedGalleryItems: (items) => get().setMoodboardState({ selectedGalleryItems: items }),
 	setSelectedComboboxItem: (item) => get().setMoodboardState({ selectedComboboxItem: item }),
 

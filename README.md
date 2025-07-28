@@ -6,28 +6,30 @@ Tonic Moodboard is a web application designed for [tonicliving.com](https://toni
 
 ## Features
 
-- **Create and Manage Moodboards**: Designers can create multiple mood boards, switch between them, and delete them
-- **Add and Customize Pillows**: Add pillows to the canvas from a searchable list of Tonic Living products
-- **Add and Customize Text**: Add text elements with options to change font weight and size
-- **Drag and Drop**: Easily arrange elements on the canvas
-- **Remove Background**: Automatically remove backgrounds from pillow images
-- **Export to PDF**: Download mood boards as high-quality PDFs
-- **Load from File**: Import mood boards from JSON or PDF files
-- **Responsive Design**: Works across various screen sizes
+-   **Create and Manage Moodboards**: Designers can create multiple mood boards, switch between them, and delete them
+-   **Add and Customize Pillows**: Add pillows to the canvas from a searchable list of Tonic Living products
+-   **Add and Customize Text**: Add text elements with options to change font weight and size
+-   **Drag and Drop**: Easily arrange elements on the canvas
+-   **Remove Background**: Automatically remove backgrounds from pillow images
+-   **Export to PDF**: Download mood boards as high-quality PDFs
+-   **Load from File**: Import mood boards from JSON or PDF files
+-   **Responsive Design**: Works across various screen sizes
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v14 or later)
-- npm or yarn
+-   Node.js (v14 or later)
+-   npm or yarn
 
 ### Installation
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/your-username/tonic-moodboard.git
 ```
+
 2. Navigate to the project directory:
     ```bash
     cd tonic-moodboard

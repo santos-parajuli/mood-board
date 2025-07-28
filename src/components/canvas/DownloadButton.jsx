@@ -47,17 +47,15 @@ const DownloadButton = () => {
 				ctx.imageSmoothingQuality = 'high';
 				const imgAspect = img.naturalWidth / img.naturalHeight;
 				const targetAspect = targetWidth / targetHeight;
-				let sourceX = 0;
-				let sourceY = 0;
-				let sourceWidth = img.naturalWidth;
-				let sourceHeight = img.naturalHeight;
+				let sourceX = 0,
+					sourceY = 0,
+					sourceWidth = img.naturalWidth,
+					sourceHeight = img.naturalHeight;
 
 				if (imgAspect > targetAspect) {
-					sourceHeight = img.naturalHeight;
 					sourceWidth = sourceHeight * targetAspect;
 					sourceX = (img.naturalWidth - sourceWidth) / 2;
 				} else {
-					sourceWidth = img.naturalWidth;
 					sourceHeight = sourceWidth / targetAspect;
 					sourceY = (img.naturalHeight - sourceHeight) / 2;
 				}
@@ -86,6 +84,9 @@ const DownloadButton = () => {
 					hotfixes: ['px_scaling'],
 				});
 
+				pdf.setFont('Verdana', 'normal');
+				pdf.setFontSize(12);
+
 				const pdfWidth = pdf.internal.pageSize.getWidth();
 				const pdfHeight = pdf.internal.pageSize.getHeight();
 				const headerHeight = 60;
@@ -95,17 +96,14 @@ const DownloadButton = () => {
 				const canvasTopPadding = headerHeight + padding;
 				const canvasBottomPadding = pdfHeight - 60 - padding;
 
-				// Load logo once
+				// Load footer logo once
 				const logoData = await toHighQualityDataUrl('/toniclogo.png');
 
 				for (const moodboard of moodboards) {
-					if (moodboards.indexOf(moodboard) > 0) {
-						pdf.addPage();
-					}
+					if (moodboards.indexOf(moodboard) > 0) pdf.addPage();
 
-					const { canvasImages, canvasTexts, moodboardName } = moodboard;
+					const { canvasImages, canvasTexts } = moodboard;
 
-					// Prepare all images with high quality data URLs
 					const imagesWithData = await Promise.all(
 						canvasImages.map(async (img) => {
 							if (!img.dataUrl) {
@@ -118,10 +116,6 @@ const DownloadButton = () => {
 						})
 					);
 
-					// Add header with logo
-					await addImageWithCover(pdf, logoData.dataUrl, padding, 10, 240, 50);
-
-					// Calculate content boundaries
 					let minX = Infinity,
 						minY = Infinity,
 						maxX = 0,
@@ -135,7 +129,7 @@ const DownloadButton = () => {
 					});
 
 					canvasTexts.forEach((text) => {
-						const textWidth = text.text.length * (text.fontSize / 2);
+						const textWidth = pdf.getStringUnitWidth(text.text) * text.fontSize;
 						const textHeight = text.fontSize;
 						minX = Math.min(minX, text.x);
 						minY = Math.min(minY, text.y);
@@ -143,7 +137,6 @@ const DownloadButton = () => {
 						maxY = Math.max(maxY, text.y + textHeight);
 					});
 
-					// If no content, set default bounds
 					if (canvasImages.length === 0 && canvasTexts.length === 0) {
 						minX = 0;
 						minY = 0;
@@ -153,41 +146,37 @@ const DownloadButton = () => {
 
 					const contentWidth = maxX - minX;
 					const contentHeight = maxY - minY;
-
-					// Calculate available canvas space
 					const availableCanvasWidth = canvasAreaWidth - 2 * padding;
 					const availableCanvasHeight = canvasBottomPadding - canvasTopPadding;
-
-					// Calculate uniform scale factor
 					const scaleX = contentWidth > 0 ? availableCanvasWidth / contentWidth : 1;
 					const scaleY = contentHeight > 0 ? availableCanvasHeight / contentHeight : 1;
 					const uniformScale = Math.min(scaleX, scaleY);
+					const scaledContentWidth = contentWidth * uniformScale;
+					const scaledContentHeight = contentHeight * uniformScale;
+					const offsetX = (availableCanvasWidth - scaledContentWidth) / 2;
+					const offsetY = (availableCanvasHeight - scaledContentHeight) / 2;
 
-					// Add each image to the PDF with uniform scaling
 					for (const image of imagesWithData) {
-						const scaledX = padding + (image.x - minX) * uniformScale;
-						const scaledY = canvasTopPadding + (image.y - minY) * uniformScale;
+						const scaledX = padding + offsetX + (image.x - minX) * uniformScale;
+						const scaledY = canvasTopPadding + offsetY + (image.y - minY) * uniformScale;
 						const scaledWidth = image.baseWidth * uniformScale;
 						const scaledHeight = image.baseHeight * uniformScale;
-
 						await addImageWithCover(pdf, image.dataUrl, scaledX, scaledY, scaledWidth, scaledHeight);
 					}
 
-					// Add text elements with uniform scaling
+					pdf.setFont('Verdana', 'normal');
 					for (const text of canvasTexts) {
-						const scaledX = padding + (text.x - minX) * uniformScale;
-						const scaledY = canvasTopPadding + (text.y - minY) * uniformScale + text.fontSize;
+						const scaledX = padding + offsetX + (text.x - minX) * uniformScale;
+						const scaledY = canvasTopPadding + offsetY + (text.y - minY) * uniformScale + text.fontSize;
 						pdf.setFontSize(text.fontSize);
-						pdf.setFont(undefined, text.fontWeight);
+						pdf.setFont('Verdana', text.fontWeight === 'bold' ? 'bold' : 'normal');
 						pdf.text(text.text, scaledX, scaledY);
 					}
 
-					// Draw divider line
 					pdf.setDrawColor(200, 200, 200);
-					const footerDividerY = pdfHeight - 60 - 10;
+					const footerDividerY = pdfHeight - 40 - 10;
 					pdf.line(canvasAreaWidth, headerHeight, canvasAreaWidth, footerDividerY);
 
-					// Create unique index items
 					const uniqueIndexItems = [];
 					const seenUrls = new Set();
 					for (const image of imagesWithData) {
@@ -197,15 +186,15 @@ const DownloadButton = () => {
 						}
 					}
 
-					// Add index section
 					let yPosition = canvasTopPadding;
 					const indexX = canvasAreaWidth + padding;
 					const indexContentWidth = indexAreaWidth - 2 * padding;
-					const thumbSize = 50;
-					const textLineHeight = 14;
-					const itemSpacing = 20;
+					const thumbSize = 30;
+					const textLineHeight = 12;
+					const itemSpacing = 15;
 
-					pdf.setFontSize(11);
+					pdf.setFont('Verdana', 'normal');
+					pdf.setFontSize(9);
 					pdf.setTextColor(40, 40, 40);
 
 					for (const image of uniqueIndexItems) {
@@ -221,56 +210,56 @@ const DownloadButton = () => {
 						}
 
 						await addImageWithCover(pdf, image.dataUrl, indexX, yPosition, thumbWidth, thumbHeight);
-
-						const textX = indexX + thumbWidth + 10;
-						const textWidth = indexContentWidth - thumbWidth - 10;
+						const textX = indexX + thumbWidth + 8;
+						const textWidth = indexContentWidth - thumbWidth - 8;
 						pdf.setTextColor(0, 0, 255);
-
 						const textLines = pdf.splitTextToSize(image.alt, textWidth);
 						const textHeight = textLines.length * textLineHeight;
 						const baseUrl = region === 'CA' ? 'https://www.tonicliving.ca' : 'https://www.tonicliving.com';
 						const productUrl = `${baseUrl}/products/${image.pillowUrl.split('/').pop()}`;
-
 						textLines.forEach((line, i) => {
 							pdf.textWithLink(line, textX, yPosition + thumbHeight / 2 - textHeight / 2 + i * textLineHeight + textLineHeight, { url: productUrl });
 						});
-
 						pdf.setTextColor(40, 40, 40);
 						yPosition += Math.max(thumbHeight, textHeight) + itemSpacing;
 					}
 
-					// Add footer section
-					const footerY = pdfHeight - 60;
+					const footerY = pdfHeight - 40;
 					pdf.setDrawColor(200, 200, 200);
 					pdf.line(padding, footerY - 10, pdfWidth - padding, footerY - 10);
 
-					// Add favicon
+					const logoWidth = 150;
+					const logoHeight = 30;
 					try {
-						const faviconData = await toHighQualityDataUrl('/favicon.ico');
-						await addImageWithCover(pdf, faviconData.dataUrl, padding, footerY, 30, 30);
+						await addImageWithCover(pdf, logoData.dataUrl, padding, footerY, logoWidth, logoHeight);
+						const tonicUrl = region === 'CA' ? 'https://www.tonicliving.ca' : 'https://www.tonicliving.com';
+						pdf.link(padding, footerY, logoWidth, logoHeight, { url: tonicUrl });
 					} catch (e) {
-						console.log('Could not load favicon', e);
+						console.log('Could not load footer logo', e);
 					}
 
-					// Add contact info
-					pdf.setFontSize(10);
+					const flexGap = 20;
+					const sectionY = footerY + 10;
+
+					const addressX = padding + logoWidth + flexGap;
+					pdf.setFont('Verdana', 'normal');
+					pdf.setFontSize(9);
 					pdf.setTextColor(80, 80, 80);
-					const contactInfo = ['36 Northline Rd Unit 6, Toronto, Ontario', '416-699-9879', `www.tonicliving.${region === 'CA' ? 'ca' : 'com'}`];
+					pdf.text('36 Northline Rd Unit 6,', addressX, sectionY);
+					pdf.text('Toronto, Ontario', addressX, sectionY + 12);
 
-					contactInfo.forEach((line, i) => {
-						pdf.text(line, padding + 40, footerY + 10 + i * 12);
-					});
+					const contactX = addressX + 100;
+					pdf.text('416-699-9879', contactX, sectionY);
+					pdf.text(`designhelp@tonicliving.com`, contactX, sectionY + 12);
 
-					// Add social media icons
+					let socialX = pdfWidth - 120;
+					const socialSize = 15;
+					const socialSpacing = 25;
 					const socialMedia = [
 						{ icon: '/Instagram.png', url: 'https://www.instagram.com/tonicliving/' },
 						{ icon: '/Facebook.png', url: 'https://www.facebook.com/tonicliving/' },
 						{ icon: '/Pinterest.png', url: 'https://www.pinterest.com/tonicliving/' },
 					];
-
-					let socialX = pdfWidth - 120;
-					const socialSize = 15;
-					const socialSpacing = 25;
 
 					for (const platform of socialMedia) {
 						try {
@@ -283,12 +272,8 @@ const DownloadButton = () => {
 						}
 					}
 				}
-				const metadata = {
-					moodboards,
-					name,
-					region, // assuming `name` is defined as a string variable, e.g. "My Moodboard"
-				};
-				console.log(metadata);
+
+				const metadata = { moodboards, name, region };
 				pdf.addMetadata(JSON.stringify(metadata), 'jspdf:metadata');
 				pdf.save(`${name}.pdf`);
 				resolve('Mood boards downloaded successfully!');
