@@ -1,5 +1,8 @@
 module.exports = {
 	theme: {
+		fontFamily: {
+			'brown-std-light': 'var(--font-brown-std-light)',
+		},
 		colors: {
 			black: '#000',
 			white: '#fff',

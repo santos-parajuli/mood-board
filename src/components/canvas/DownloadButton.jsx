@@ -1,5 +1,7 @@
 'use client';
 
+import '../../../public/Brown Std Light';
+
 import { Button } from '@/components/ui/button';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
@@ -83,8 +85,8 @@ const DownloadButton = () => {
 					format: 'letter',
 					hotfixes: ['px_scaling'],
 				});
-
-				pdf.setFont('Verdana', 'normal');
+				console.log(pdf.getFontList());
+				pdf.setFont('Brown Std Light', 'normal');
 				pdf.setFontSize(12);
 
 				const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -163,13 +165,13 @@ const DownloadButton = () => {
 						const scaledHeight = image.baseHeight * uniformScale;
 						await addImageWithCover(pdf, image.dataUrl, scaledX, scaledY, scaledWidth, scaledHeight);
 					}
+					pdf.setFont('Brown Std Light', 'normal');
 
-					pdf.setFont('Verdana', 'normal');
 					for (const text of canvasTexts) {
 						const scaledX = padding + offsetX + (text.x - minX) * uniformScale;
 						const scaledY = canvasTopPadding + offsetY + (text.y - minY) * uniformScale + text.fontSize;
 						pdf.setFontSize(text.fontSize);
-						pdf.setFont('Verdana', text.fontWeight === 'bold' ? 'bold' : 'normal');
+						pdf.setFont('Brown Std Light', text.fontWeight === 'bold' ? 'semibold' : 'normal');
 						pdf.text(text.text, scaledX, scaledY);
 					}
 
@@ -192,8 +194,8 @@ const DownloadButton = () => {
 					const thumbSize = 30;
 					const textLineHeight = 12;
 					const itemSpacing = 15;
+					pdf.setFont('Brown Std Light', 'normal');
 
-					pdf.setFont('Verdana', 'normal');
 					pdf.setFontSize(9);
 					pdf.setTextColor(40, 40, 40);
 
@@ -229,7 +231,7 @@ const DownloadButton = () => {
 					pdf.line(padding, footerY - 10, pdfWidth - padding, footerY - 10);
 
 					const logoWidth = 150;
-					const logoHeight = 30;
+					const logoHeight = 25;
 					try {
 						await addImageWithCover(pdf, logoData.dataUrl, padding, footerY, logoWidth, logoHeight);
 						const tonicUrl = region === 'CA' ? 'https://www.tonicliving.ca' : 'https://www.tonicliving.com';
@@ -242,7 +244,8 @@ const DownloadButton = () => {
 					const sectionY = footerY + 10;
 
 					const addressX = padding + logoWidth + flexGap;
-					pdf.setFont('Verdana', 'normal');
+					pdf.setFont('Brown Std Light', 'normal');
+
 					pdf.setFontSize(9);
 					pdf.setTextColor(80, 80, 80);
 					pdf.text('36 Northline Rd Unit 6,', addressX, sectionY);

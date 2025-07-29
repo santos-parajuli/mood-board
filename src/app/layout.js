@@ -1,18 +1,6 @@
 import './globals.css';
 
-import { Nunito, Nunito_Sans } from 'next/font/google';
-
 import { Toaster } from 'sonner';
-
-const nunito_Sans = Nunito_Sans({
-	variable: '--font-nunito-sans',
-	subsets: ['latin'],
-});
-
-const nunito = Nunito({
-	variable: '--font-nunito',
-	subsets: ['latin'],
-});
 
 export const metadata = {
 	title: 'Pillow Mood Board – Design Your Perfect Pillow Combinations | Tonic Living',
@@ -58,7 +46,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
 	return (
 		<html lang='en'>
-			<body className={`${nunito_Sans.variable} ${nunito.variable} antialiased`}>
+			<body className='font-brown-std-light'>
 				<Toaster />
 				{children}
 			</body>
