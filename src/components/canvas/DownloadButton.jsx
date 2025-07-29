@@ -230,8 +230,8 @@ const DownloadButton = () => {
 					pdf.setDrawColor(200, 200, 200);
 					pdf.line(padding, footerY - 10, pdfWidth - padding, footerY - 10);
 
-					const logoWidth = 150;
-					const logoHeight = 25;
+					const logoWidth = 145;
+					const logoHeight = 26.5;
 					try {
 						await addImageWithCover(pdf, logoData.dataUrl, padding, footerY, logoWidth, logoHeight);
 						const tonicUrl = region === 'CA' ? 'https://www.tonicliving.ca' : 'https://www.tonicliving.com';
