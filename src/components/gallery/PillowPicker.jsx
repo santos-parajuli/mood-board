@@ -43,7 +43,7 @@ const PillowPicker = () => {
           <Command>
             <CommandInput placeholder="Search pillow..." />
             <CommandList>
-              <CommandEmpty>No pillow found.</CommandEmpty>
+              <CommandEmpty>Loading...</CommandEmpty>
               <CommandGroup>
                 {allXlsxData.map((pillow) => (
                   <CommandItem
