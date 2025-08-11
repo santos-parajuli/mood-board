@@ -1,18 +1,21 @@
 import { NextResponse } from 'next/server';
 import { google } from 'googleapis';
-import path from 'path';
 
 let jwtClient;
 
 try {
-	const keyFilePath = path.join(process.cwd(), 'google-service-account.json');
+	// Decode base64 JSON from environment
+	const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_BASE64 ? JSON.parse(Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8')) : null;
+
+	if (!keyJson) throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_BASE64 env variable');
 
 	jwtClient = new google.auth.JWT({
-		keyFile: keyFilePath,
+		email: keyJson.client_email,
+		key: keyJson.private_key,
 		scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 	});
 } catch (err) {
-	console.error('Failed to initialize JWT client from key file:', err);
+	console.error('Failed to initialize JWT client:', err);
 }
 
 export async function GET() {
