@@ -15,10 +15,10 @@ export default function XLSXDataFetcher() {
 			try {
 				const response = await fetch('/api/xlsx');
 				if (!response.ok) {
-					throw new Error('Failed to fetch XLSX data');
+					const errorText = await response.text();
+					throw new Error(`Failed to fetch XLSX data: ${response.status} ${response.statusText} - ${errorText}`);
 				}
 				const result = await response.json();
-				console.log(result.data);
 				setAllXlsxData(result.data);
 			} catch (error) {
 				console.error('Error fetching XLSX data:', error);

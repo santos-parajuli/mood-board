@@ -156,6 +156,7 @@ const Canvas = forwardRef((props, ref) => {
 
 	const handleRemoveBackground = async (id, src) => {
 		updateCanvasImage(id, { isProcessing: true });
+		// /api/removebg original;
 		try {
 			const response = await fetch('/api/removebg', {
 				method: 'POST',

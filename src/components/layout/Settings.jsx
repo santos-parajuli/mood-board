@@ -12,11 +12,13 @@ import useCanvasStore from '@/store/canvasStore';
 import useMoodboardStore from '@/store/moodboardStore';
 
 const Settings = () => {
-	const { moodboards, activeMoodboardId, getMoodboardState, setMoodboardState, region, setRegion, name, setName, createMoodboard, deleteMoodboard, selectMoodboard } = useMoodboardStore();
+	const { moodboards, activeMoodboardId, getMoodboardState, setMoodboardState, region, setRegion, name, setName, createMoodboard, deleteMoodboard, selectMoodboard, allXlsxData, setAllXlsxData } = useMoodboardStore();
 	const activeMoodboard = getMoodboardState();
 	const { canvasRef } = useCanvasStore();
 	const fileInputRef = useRef(null);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [scrapeUrl, setScrapeUrl] = useState('');
+	const [isScraping, setIsScraping] = useState(false);
 
 	const handleCreateMoodboard = () => {
 		createMoodboard(name);
@@ -36,6 +38,95 @@ const Settings = () => {
 		deleteMoodboard(activeMoodboardId);
 		toast.success('Moodboard deleted!');
 		setIsDeleteDialogOpen(false);
+	};
+
+	const handleScrape = async () => {
+		if (!scrapeUrl) {
+			toast.error('Please enter a URL to scrape.');
+			return;
+		}
+		setIsScraping(true);
+		const scrapePromise = new Promise(async (resolve, reject) => {
+			try {
+				const url = new URL(scrapeUrl);
+				const hostname = url.hostname;
+				if (!hostname.includes('tonicliving.ca') && !hostname.includes('tonicliving.com')) {
+					reject(new Error('Please enter a URL from tonicliving.ca or tonicliving.com.'));
+					return;
+				}
+				const pathSegments = url.pathname.split('/');
+				const productSlug = pathSegments[pathSegments.indexOf('products') + 1];
+
+				if (!productSlug) {
+					reject(new Error('Could not extract product information from the URL.'));
+					return;
+				}
+				const isProductAlreadyAdded = allXlsxData.some((item) => {
+					return item.Pillow_URL && item.Pillow_URL.includes(productSlug);
+				});
+				if (isProductAlreadyAdded) {
+					resolve('This product is already in your list.');
+					return;
+				}
+				const response = await fetch('/api/scrape', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ url: scrapeUrl }),
+				});
+				const data = await response.json();
+				if (response.ok) {
+					await handleAddToXLSX(data);
+					const updatedXlsxDataResponse = await fetch('/api/xlsx');
+					if (updatedXlsxDataResponse.ok) {
+						const result = await updatedXlsxDataResponse.json();
+						setAllXlsxData(result.data);
+					} else {
+						console.error('Failed to re-fetch XLSX data after scrape:', updatedXlsxDataResponse.statusText);
+					}
+					resolve('Added to list Successfully!');
+				} else {
+					reject(new Error(data.error || 'Failed to scrape the website'));
+				}
+			} catch (error) {
+				console.error('Scraping error:', error);
+				reject(error);
+			} finally {
+				setIsScraping(false);
+			}
+		});
+
+		toast.promise(scrapePromise, {
+			loading: 'Adding to list...',
+			success: (message) => message,
+			error: (err) => err.message,
+		});
+	};
+
+	const handleAddToXLSX = async (data) => {
+		if (!data) {
+			toast.error('No scraped data to add.');
+			return;
+		}
+		try {
+			const response = await fetch('/api/xlsx', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(data),
+			});
+			if (response.ok) {
+				toast.success('Data added to XLSX successfully!');
+			} else {
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Failed to add data to XLSX');
+			}
+		} catch (error) {
+			console.error('Error adding to XLSX:', error);
+			toast.error(error.message);
+		}
 	};
 
 	const loadMoodboard = (event) => {
@@ -168,6 +259,15 @@ const Settings = () => {
 							<Label>Load Moodboard</Label>
 							<input type='file' ref={fileInputRef} onChange={loadMoodboard} style={{ display: 'none' }} accept='.json,.pdf' />
 							<Button onClick={() => fileInputRef.current.click()}>Load from file</Button>
+						</div>
+						<div className='grid gap-3'>
+							<Label htmlFor='scrape-url'>Scrape URL</Label>
+							<div className='flex items-center gap-2'>
+								<Input id='scrape-url' value={scrapeUrl} onChange={(e) => setScrapeUrl(e.target.value)} placeholder='https://www.example.com' />
+								<Button onClick={handleScrape} disabled={isScraping}>
+									Go
+								</Button>
+							</div>
 						</div>
 					</div>
 					<SheetFooter>

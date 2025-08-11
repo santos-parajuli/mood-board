@@ -5,7 +5,7 @@ import Settings from './Settings';
 import { TypeIcon } from 'lucide-react';
 import useMoodboardStore from '@/store/moodboardStore';
 
-const Header = () => {
+const Header = ({ setScrapedData }) => {
 	const { region, setCanvasTexts } = useMoodboardStore();
 
 	const addText = () => {
@@ -36,7 +36,7 @@ const Header = () => {
 					<Button onClick={addText} variant='outline' size='icon'>
 						<TypeIcon className='h-4 w-4' />
 					</Button>
-					<Settings />
+					<Settings setScrapedData={setScrapedData} />
 					<DownloadButton />
 				</div>
 			</div>
