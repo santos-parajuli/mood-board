@@ -18,6 +18,7 @@ export default function XLSXDataFetcher() {
 					throw new Error('Failed to fetch XLSX data');
 				}
 				const result = await response.json();
+				console.log(result.data);
 				setAllXlsxData(result.data);
 			} catch (error) {
 				console.error('Error fetching XLSX data:', error);
