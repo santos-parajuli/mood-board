@@ -248,10 +248,10 @@ const DownloadButton = () => {
 
 					pdf.setFontSize(9);
 					pdf.setTextColor(80, 80, 80);
-					pdf.text('36 Northline Rd Unit 6,', addressX, sectionY);
-					pdf.text('Toronto, Ontario', addressX, sectionY + 12);
+					pdf.text('36 Northline Rd. No. 6', addressX, sectionY);
+					pdf.text('Toronto, ON M4B 3E2', addressX, sectionY + 12);
 
-					const contactX = addressX + 100;
+					const contactX = addressX + 120;
 					pdf.text('416-699-9879', contactX, sectionY);
 					pdf.text(`designhelp@tonicliving.com`, contactX, sectionY + 12);
 
