@@ -16,19 +16,17 @@ const Settings = () => {
 	const activeMoodboard = getMoodboardState();
 	const { canvasRef } = useCanvasStore();
 	const fileInputRef = useRef(null);
+	const imageInputRef = useRef(null);
 	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 	const [scrapeUrl, setScrapeUrl] = useState('');
 	const [isScraping, setIsScraping] = useState(false);
-
 	const handleCreateMoodboard = () => {
 		createMoodboard(name);
 		toast.success(`New moodboard created!`);
 	};
-
 	const handleDeleteMoodboardClick = () => {
 		setIsDeleteDialogOpen(true);
 	};
-
 	const handleConfirmDelete = () => {
 		if (moodboards.length <= 1) {
 			toast.error('Cannot delete the last moodboard.');
@@ -39,7 +37,6 @@ const Settings = () => {
 		toast.success('Moodboard deleted!');
 		setIsDeleteDialogOpen(false);
 	};
-
 	const handleScrape = async () => {
 		if (!scrapeUrl) {
 			toast.error('Please enter a URL to scrape.');
@@ -56,7 +53,6 @@ const Settings = () => {
 				}
 				const pathSegments = url.pathname.split('/');
 				const productSlug = pathSegments[pathSegments.indexOf('products') + 1];
-
 				if (!productSlug) {
 					reject(new Error('Could not extract product information from the URL.'));
 					return;
@@ -96,14 +92,12 @@ const Settings = () => {
 				setIsScraping(false);
 			}
 		});
-
 		toast.promise(scrapePromise, {
 			loading: 'Adding to list...',
 			success: (message) => message,
 			error: (err) => err.message,
 		});
 	};
-
 	const handleAddToXLSX = async (data) => {
 		if (!data) {
 			toast.error('No scraped data to add.');
@@ -128,7 +122,6 @@ const Settings = () => {
 			toast.error(error.message);
 		}
 	};
-
 	const loadMoodboard = (event) => {
 		const file = event.target.files[0];
 		if (!file) {
@@ -172,9 +165,7 @@ const Settings = () => {
 						region: moodboard.region || 'CA',
 					});
 					selectMoodboard(newMoodboardId);
-
 					await new Promise((resolve) => setTimeout(resolve, 100));
-
 					if (canvasRef.current && moodboard.canvasImages) {
 						const imagePromises = moodboard.canvasImages.map((img) => {
 							if (img.originalSrc) {
@@ -185,7 +176,6 @@ const Settings = () => {
 						await Promise.all(imagePromises.filter((p) => p));
 					}
 				}
-
 				deleteMoodboard('default-moodboard');
 				toast.success('Moodboard state loaded!');
 			} catch (error) {
@@ -193,14 +183,55 @@ const Settings = () => {
 				toast.error('Failed to load moodboard state. Invalid file.');
 			}
 		};
-
 		if (file.type === 'application/pdf') {
 			reader.readAsArrayBuffer(file);
 		} else {
 			reader.readAsText(file);
 		}
 	};
+	const handleImageUpload = (event) => {
+		const file = event.target.files[0];
+		if (!file) return;
+		const currentImages = activeMoodboard.canvasImages || [];
 
+		// Count only the uploaded ones
+		const uploadedCount = currentImages.filter((img) => img.uploaded).length;
+
+		if (uploadedCount >= 2) {
+			toast.error('You can add at most 2 custom images.');
+			return;
+		}
+		const reader = new FileReader();
+		reader.onload = (e) => {
+			const src = e.target.result;
+			const img = new Image();
+			img.onload = () => {
+				const newImage = {
+					id: `image-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+					src: src,
+					originalSrc: src,
+					x: 100,
+					y: 100,
+					width: 200,
+					height: (200 * img.height) / img.width,
+					currentWidth: 200,
+					currentHeight: (200 * img.height) / img.width,
+					baseWidth: 200,
+					baseHeight: (200 * img.height) / img.width,
+					resizable: false,
+					uploaded: true,
+				};
+				const updatedCanvasImages = [...currentImages, newImage];
+				setMoodboardState({ ...activeMoodboard, canvasImages: updatedCanvasImages });
+				toast.success('Image added to canvas!');
+			};
+			img.src = src;
+		};
+		reader.readAsDataURL(file);
+		if (event.target) {
+			event.target.value = null;
+		}
+	};
 	return (
 		<>
 			<Sheet>
@@ -259,6 +290,13 @@ const Settings = () => {
 							<Label>Load Moodboard</Label>
 							<input type='file' ref={fileInputRef} onChange={loadMoodboard} style={{ display: 'none' }} accept='.json,.pdf' />
 							<Button onClick={() => fileInputRef.current.click()}>Load from file</Button>
+						</div>
+						<div className='grid gap-3'>
+							<Label>Custom Images</Label>
+							<input type='file' ref={imageInputRef} onChange={handleImageUpload} style={{ display: 'none' }} accept='image/*' />
+							<Button onClick={() => imageInputRef.current.click()} disabled={activeMoodboard.canvasImages.filter((img) => img.uploaded).length === 2}>
+								Add Image
+							</Button>
 						</div>
 						<div className='grid gap-3'>
 							<Label htmlFor='scrape-url'>Scrape URL</Label>

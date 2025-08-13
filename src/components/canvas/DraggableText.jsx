@@ -1,3 +1,5 @@
+'use client';
+
 import { Bold, Minus, Plus, Trash2 } from 'lucide-react';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useRef, useState } from 'react';
@@ -36,14 +38,7 @@ export default function DraggableText({ text, onStop, onDrag, onClick, isSelecte
 
 	return (
 		<Draggable nodeRef={nodeRef} position={{ x: text.x, y: text.y }} onStop={(e, ui) => onStop(e, ui, text.id)} onDrag={(e, ui) => onDrag(e, ui, text.id)}>
-			<div
-				ref={nodeRef}
-				className={`absolute cursor-grab p-2 ${isSelected ? 'border-2 border-blue-500' : ''}`}
-				onClick={(e) => {
-					e.stopPropagation();
-					onClick(text.id);
-				}}
-				onDoubleClick={handleDoubleClick}>
+			<div ref={nodeRef} className={`absolute cursor-grab p-2 ${isSelected ? 'border-2 border-blue-500' : ''}`} onClick={(e) => onClick(e, text.id)} onDoubleClick={handleDoubleClick}>
 				<ContextMenu>
 					<ContextMenuTrigger>
 						{isEditing ? (

@@ -14,11 +14,9 @@ const useMoodboardStore = create((set, get) => ({
 	region: 'CA',
 	activeMoodboardId: 'default-moodboard',
 	allXlsxData: [],
-	selectedItemId: null,
+	selectedItemIds: [],
 	name: 'Tonic Moodboard',
-
 	setRegion: (newRegion) => set({ region: newRegion }),
-
 	setName: (newName) => {
 		set((state) => {
 			const updatedMoodboards = state.moodboards.map((moodboard, index) => ({
@@ -28,14 +26,25 @@ const useMoodboardStore = create((set, get) => ({
 			return { name: newName, moodboards: updatedMoodboards };
 		});
 	},
-
 	// General data setters
 	setAllXlsxData: (data) => set({ allXlsxData: data }),
-	setSelectedItemId: (id) => set({ selectedItemId: id }),
+	setSelectedItemIds: (ids) => set({ selectedItemIds: ids }),
+	addSelectedItem: (id) =>
+		set((state) => ({
+			selectedItemIds: [...state.selectedItemIds, id],
+		})),
+	removeSelectedItem: (id) =>
+		set((state) => ({
+			selectedItemIds: state.selectedItemIds.filter((itemId) => itemId !== id),
+		})),
+	toggleSelectedItem: (id) =>
+		set((state) => ({
+			selectedItemIds: state.selectedItemIds.includes(id) ? state.selectedItemIds.filter((itemId) => itemId !== id) : [...state.selectedItemIds, id],
+		})),
+	clearSelectedItems: () => set({ selectedItemIds: [] }),
 
 	// Moodboard management actions
 	selectMoodboard: (id) => set({ activeMoodboardId: id }),
-
 	createMoodboard: () => {
 		set((state) => {
 			const newMoodboard = {
@@ -53,7 +62,6 @@ const useMoodboardStore = create((set, get) => ({
 			};
 		});
 	},
-
 	deleteMoodboard: (id) => {
 		set((state) => {
 			const remainingMoodboards = state.moodboards.filter((m) => m.id !== id);
@@ -69,13 +77,11 @@ const useMoodboardStore = create((set, get) => ({
 			};
 		});
 	},
-
 	// Get active moodboard state
 	getMoodboardState: () => {
 		const state = get();
 		return state.moodboards.find((mb) => mb.id === state.activeMoodboardId);
 	},
-
 	// Set active moodboard state (general update)
 	setMoodboardState: (newProps) =>
 		set((state) => {
@@ -88,7 +94,6 @@ const useMoodboardStore = create((set, get) => ({
 				return {};
 			}
 		}),
-
 	// Refactored actions to operate on the active moodboard
 	setCanvasImages: (images) => get().setMoodboardState({ canvasImages: images }),
 	setCanvasTexts: (text) =>
@@ -104,7 +109,6 @@ const useMoodboardStore = create((set, get) => ({
 		})),
 	setSelectedGalleryItems: (items) => get().setMoodboardState({ selectedGalleryItems: items }),
 	setSelectedComboboxItem: (item) => get().setMoodboardState({ selectedComboboxItem: item }),
-
 	// Canvas item manipulation
 	updateCanvasImage: (id, newProps) =>
 		set((state) => ({
@@ -117,7 +121,6 @@ const useMoodboardStore = create((set, get) => ({
 					: mb
 			),
 		})),
-
 	updateCanvasText: (id, newProps) =>
 		set((state) => ({
 			moodboards: state.moodboards.map((mb) =>
@@ -129,7 +132,6 @@ const useMoodboardStore = create((set, get) => ({
 					: mb
 			),
 		})),
-
 	addCanvasImage: (image) =>
 		set((state) => ({
 			moodboards: state.moodboards.map((mb) =>
@@ -141,7 +143,6 @@ const useMoodboardStore = create((set, get) => ({
 					: mb
 			),
 		})),
-
 	addCanvasText: (text) =>
 		set((state) => ({
 			moodboards: state.moodboards.map((mb) =>
@@ -153,7 +154,6 @@ const useMoodboardStore = create((set, get) => ({
 					: mb
 			),
 		})),
-
 	deleteCanvasItem: (id) =>
 		set((state) => ({
 			moodboards: state.moodboards.map((mb) =>
@@ -166,7 +166,6 @@ const useMoodboardStore = create((set, get) => ({
 					: mb
 			),
 		})),
-
 	handleDragStart: (e, item) => {
 		console.log(item);
 		e.dataTransfer.setData('image/src', item.image);
@@ -176,7 +175,6 @@ const useMoodboardStore = create((set, get) => ({
 		e.dataTransfer.setData('pillowURL', item.url);
 		e.dataTransfer.setData('source/type', 'gallery');
 	},
-
 	resetMoodboard: () =>
 		set((state) => ({
 			moodboards: state.moodboards.map((mb) =>
@@ -191,8 +189,7 @@ const useMoodboardStore = create((set, get) => ({
 					  }
 					: mb
 			),
-			selectedItemId: null,
+			selectedItemIds: [],
 		})),
 }));
-
 export default useMoodboardStore;

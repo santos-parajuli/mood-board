@@ -9,7 +9,8 @@ import useMoodboardStore from '../../store/moodboardStore';
 import { useState } from 'react';
 
 const DownloadButton = () => {
-	const { moodboards, name, region } = useMoodboardStore();
+	const { moodboards, getMoodboardState, region, name } = useMoodboardStore();
+	const activeMoodboard = getMoodboardState();
 	const QUALITY_SCALE_FACTOR = 3;
 	const [isDownloading, setIsDownloading] = useState(false);
 
@@ -82,9 +83,10 @@ const DownloadButton = () => {
 				const pdf = new jsPDF({
 					orientation: 'landscape',
 					unit: 'pt',
-					format: 'letter',
+					format: [950, 612], // width, height in points
 					hotfixes: ['px_scaling'],
 				});
+
 				console.log(pdf.getFontList());
 				pdf.setFont('Brown Std Light', 'normal');
 				pdf.setFontSize(12);
@@ -108,13 +110,24 @@ const DownloadButton = () => {
 
 					const imagesWithData = await Promise.all(
 						canvasImages.map(async (img) => {
-							if (!img.dataUrl) {
-								const { dataUrl, width, height } = await toHighQualityDataUrl(img.originalSrc || img.src);
-								img.dataUrl = dataUrl;
-								img.naturalWidth = width;
-								img.naturalHeight = height;
+							// If the image is a data URL (uploaded image), use it directly
+							if (img.src && img.src.startsWith('data:')) {
+								return {
+									...img,
+									dataUrl: img.src, // Use the existing data URL
+									naturalWidth: img.width, // Use the stored width
+									naturalHeight: img.height, // Use the stored height
+								};
+							} else {
+								// For other images (e.g., from external URLs), process them
+								if (!img.dataUrl) {
+									const { dataUrl, width, height } = await toHighQualityDataUrl(img.originalSrc || img.src);
+									img.dataUrl = dataUrl;
+									img.naturalWidth = width;
+									img.naturalHeight = height;
+								}
+								return img;
 							}
-							return img;
 						})
 					);
 
@@ -155,7 +168,11 @@ const DownloadButton = () => {
 					const uniformScale = Math.min(scaleX, scaleY);
 					const scaledContentWidth = contentWidth * uniformScale;
 					const scaledContentHeight = contentHeight * uniformScale;
-					const offsetX = (availableCanvasWidth - scaledContentWidth) / 2;
+					var offsetX = 20;
+
+					if (activeMoodboard.canvasImages.filter((img) => img.uploaded).length === 0) {
+						offsetX = (availableCanvasWidth - scaledContentWidth) / 2;
+					}
 					const offsetY = (availableCanvasHeight - scaledContentHeight) / 2;
 
 					for (const image of imagesWithData) {
@@ -182,7 +199,7 @@ const DownloadButton = () => {
 					const uniqueIndexItems = [];
 					const seenUrls = new Set();
 					for (const image of imagesWithData) {
-						if (!seenUrls.has(image.pillowUrl)) {
+						if (image.pillowUrl && !seenUrls.has(image.pillowUrl)) {
 							seenUrls.add(image.pillowUrl);
 							uniqueIndexItems.push(image);
 						}
