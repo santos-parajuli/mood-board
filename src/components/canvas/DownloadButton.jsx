@@ -93,10 +93,13 @@ const DownloadButton = () => {
 
 				const pdfWidth = pdf.internal.pageSize.getWidth();
 				const pdfHeight = pdf.internal.pageSize.getHeight();
+
+				// Layout constants
 				const headerHeight = 60;
 				const padding = 20;
-				const canvasAreaWidth = pdfWidth * 0.7;
-				const indexAreaWidth = pdfWidth * 0.3;
+				const sectionGap = 15; // fixed gap between canvas & index
+				const indexAreaWidth = 220; // fixed width for index section
+				const canvasAreaWidth = pdfWidth - indexAreaWidth - sectionGap; // remaining width for canvas
 				const canvasTopPadding = headerHeight + padding;
 				const canvasBottomPadding = pdfHeight - 60 - padding;
 
@@ -110,16 +113,14 @@ const DownloadButton = () => {
 
 					const imagesWithData = await Promise.all(
 						canvasImages.map(async (img) => {
-							// If the image is a data URL (uploaded image), use it directly
 							if (img.src && img.src.startsWith('data:')) {
 								return {
 									...img,
-									dataUrl: img.src, // Use the existing data URL
-									naturalWidth: img.width, // Use the stored width
-									naturalHeight: img.height, // Use the stored height
+									dataUrl: img.src,
+									naturalWidth: img.width,
+									naturalHeight: img.height,
 								};
 							} else {
-								// For other images (e.g., from external URLs), process them
 								if (!img.dataUrl) {
 									const { dataUrl, width, height } = await toHighQualityDataUrl(img.originalSrc || img.src);
 									img.dataUrl = dataUrl;
@@ -131,18 +132,17 @@ const DownloadButton = () => {
 						})
 					);
 
+					// Calculate bounding box
 					let minX = Infinity,
 						minY = Infinity,
 						maxX = 0,
 						maxY = 0;
-
 					canvasImages.forEach((img) => {
 						minX = Math.min(minX, img.x);
 						minY = Math.min(minY, img.y);
 						maxX = Math.max(maxX, img.x + img.baseWidth);
 						maxY = Math.max(maxY, img.y + img.baseHeight);
 					});
-
 					canvasTexts.forEach((text) => {
 						const textWidth = pdf.getStringUnitWidth(text.text) * text.fontSize;
 						const textHeight = text.fontSize;
@@ -159,6 +159,7 @@ const DownloadButton = () => {
 						maxY = 0;
 					}
 
+					// Scale to fit canvas area
 					const contentWidth = maxX - minX;
 					const contentHeight = maxY - minY;
 					const availableCanvasWidth = canvasAreaWidth - 2 * padding;
@@ -168,13 +169,14 @@ const DownloadButton = () => {
 					const uniformScale = Math.min(scaleX, scaleY);
 					const scaledContentWidth = contentWidth * uniformScale;
 					const scaledContentHeight = contentHeight * uniformScale;
-					var offsetX = 20;
 
+					let offsetX = 10;
 					if (activeMoodboard.canvasImages.filter((img) => img.uploaded).length === 0) {
 						offsetX = (availableCanvasWidth - scaledContentWidth) / 2;
 					}
 					const offsetY = (availableCanvasHeight - scaledContentHeight) / 2;
 
+					// Draw images
 					for (const image of imagesWithData) {
 						const scaledX = padding + offsetX + (image.x - minX) * uniformScale;
 						const scaledY = canvasTopPadding + offsetY + (image.y - minY) * uniformScale;
@@ -182,8 +184,8 @@ const DownloadButton = () => {
 						const scaledHeight = image.baseHeight * uniformScale;
 						await addImageWithCover(pdf, image.dataUrl, scaledX, scaledY, scaledWidth, scaledHeight);
 					}
-					pdf.setFont('Brown Std Light', 'normal');
 
+					// Draw texts
 					for (const text of canvasTexts) {
 						const scaledX = padding + offsetX + (text.x - minX) * uniformScale;
 						const scaledY = canvasTopPadding + offsetY + (text.y - minY) * uniformScale + text.fontSize;
@@ -192,10 +194,13 @@ const DownloadButton = () => {
 						pdf.text(text.text, scaledX, scaledY);
 					}
 
+					// Divider between canvas & index
 					pdf.setDrawColor(200, 200, 200);
+					const dividerX = canvasAreaWidth + sectionGap / 2;
 					const footerDividerY = pdfHeight - 40 - 10;
-					pdf.line(canvasAreaWidth, headerHeight, canvasAreaWidth, footerDividerY);
+					pdf.line(dividerX, headerHeight, dividerX, footerDividerY);
 
+					// Index section
 					const uniqueIndexItems = [];
 					const seenUrls = new Set();
 					for (const image of imagesWithData) {
@@ -206,13 +211,13 @@ const DownloadButton = () => {
 					}
 
 					let yPosition = canvasTopPadding;
-					const indexX = canvasAreaWidth + padding;
+					const indexX = canvasAreaWidth + sectionGap + padding;
 					const indexContentWidth = indexAreaWidth - 2 * padding;
 					const thumbSize = 30;
 					const textLineHeight = 12;
 					const itemSpacing = 15;
-					pdf.setFont('Brown Std Light', 'normal');
 
+					pdf.setFont('Brown Std Light', 'normal');
 					pdf.setFontSize(9);
 					pdf.setTextColor(40, 40, 40);
 
@@ -243,6 +248,7 @@ const DownloadButton = () => {
 						yPosition += Math.max(thumbHeight, textHeight) + itemSpacing;
 					}
 
+					// Footer section stays the same...
 					const footerY = pdfHeight - 40;
 					pdf.setDrawColor(200, 200, 200);
 					pdf.line(padding, footerY - 10, pdfWidth - padding, footerY - 10);
@@ -259,10 +265,9 @@ const DownloadButton = () => {
 
 					const flexGap = 20;
 					const sectionY = footerY + 10;
-
 					const addressX = padding + logoWidth + flexGap;
-					pdf.setFont('Brown Std Light', 'normal');
 
+					pdf.setFont('Brown Std Light', 'normal');
 					pdf.setFontSize(9);
 					pdf.setTextColor(80, 80, 80);
 					pdf.text('36 Northline Rd. No. 6', addressX, sectionY);
@@ -311,7 +316,6 @@ const DownloadButton = () => {
 			error: (err) => err,
 		});
 	};
-
 	return (
 		<Button onClick={handleDownload} disabled={isDownloading}>
 			{isDownloading ? 'Downloading...' : 'Download'}
