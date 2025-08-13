@@ -22,21 +22,17 @@ const Canvas = forwardRef((props, ref) => {
 			console.warn('Item has no image source.');
 			return;
 		}
-
 		if (imageSrc.startsWith('//')) {
 			imageSrc = 'https:' + imageSrc;
 		}
-
 		const img = new Image();
 		img.src = imageSrc;
 		await new Promise((resolve, reject) => {
 			img.onload = resolve;
 			img.onerror = reject;
 		});
-
 		const originalWidth = img.naturalWidth;
 		const originalHeight = img.naturalHeight;
-
 		const extractDimensions = (title) => {
 			const match = title.match(/(\d+)x(\d+)/i);
 			if (match) {
@@ -44,12 +40,9 @@ const Canvas = forwardRef((props, ref) => {
 			}
 			return null;
 		};
-
 		let initialWidth;
 		let initialHeight;
-
 		const dimensions = extractDimensions(item.title || item.alt);
-
 		if (dimensions) {
 			initialWidth = dimensions.width * PIXELS_PER_UNIT;
 			initialHeight = dimensions.height * PIXELS_PER_UNIT;
@@ -57,7 +50,6 @@ const Canvas = forwardRef((props, ref) => {
 			initialWidth = DEFAULT_INITIAL_CANVAS_IMAGE_SIZE;
 			initialHeight = (originalHeight / originalWidth) * DEFAULT_INITIAL_CANVAS_IMAGE_SIZE;
 		}
-
 		let x, y;
 		if (dropPosition) {
 			const canvasRect = canvasRef.current.getBoundingClientRect();
@@ -69,7 +61,6 @@ const Canvas = forwardRef((props, ref) => {
 			x = canvasRect.width - initialWidth - 50; // 50px from right edge
 			y = 50; // 50px from top edge
 		}
-
 		const newImage = {
 			id: Date.now(),
 			src: imageSrc,
@@ -87,44 +78,68 @@ const Canvas = forwardRef((props, ref) => {
 			withInsertID: item.withInsertID,
 			withoutInsertID: item.withoutInsertID,
 		};
-
 		addCanvasImage(newImage);
 		setSelectedItemIds([newImage.id]);
 		handleRemoveBackground(newImage.id, newImage.src);
 	};
-
 	useImperativeHandle(ref, () => ({
 		addImageToCanvas,
 		handleRemoveBackground,
 	}));
 
+	const handleCanvasItemClick = (e, id) => {
+		e.stopPropagation();
+		if (e.shiftKey || e.metaKey || e.ctrlKey) {
+			console.log('handleCanvasItemClick: toggleSelectedItem');
+			toggleSelectedItem(id);
+		} else {
+			console.log('handleCanvasItemClick: without multi select');
+			setSelectedItemIds([id]);
+		}
+	};
+	const handleCanvasClick = () => {
+		clearSelectedItems();
+	};
 	const handleDrag = (e, ui, id) => {
-		const deltaX = ui.x - (canvasImages.find((img) => img.id === id)?.x || canvasTexts.find((txt) => txt.id === id)?.x || 0);
-		const deltaY = ui.y - (canvasImages.find((img) => img.id === id)?.y || canvasTexts.find((txt) => txt.id === id)?.y || 0);
+		const isMultiSelectActive = e.shiftKey || e.ctrlKey || e.metaKey;
+		const isDraggingUnselected = !selectedItemIds.includes(id);
 
-		selectedItemIds.forEach((selectedId) => {
+		let newSelectedIds = [...selectedItemIds];
+
+		if (isDraggingUnselected) {
+			if (!isMultiSelectActive) {
+				// Replace selection with dragged item
+				console.log('handleDrag: no isMultiSelectActive');
+				newSelectedIds = [id];
+			}
+		}
+		// Update selection **before moving**
+		setSelectedItemIds(newSelectedIds);
+		// Move all selected items
+		newSelectedIds.forEach((selectedId) => {
 			const img = canvasImages.find((img) => img.id === selectedId);
 			const txt = canvasTexts.find((txt) => txt.id === selectedId);
 
-			if (selectedId === id) {
-				if (img) updateCanvasImage(selectedId, { x: ui.x, y: ui.y });
-				if (txt) updateCanvasText(selectedId, { x: ui.x, y: ui.y });
-			} else {
-				if (img) updateCanvasImage(selectedId, { x: img.x + deltaX, y: img.y + deltaY });
-				if (txt) updateCanvasText(selectedId, { x: txt.x + deltaX, y: txt.y + deltaY });
-			}
+			if (!img && !txt) return;
+
+			// Only calculate delta relative to the item being dragged
+			const baseX = img?.x || txt?.x || 0;
+			const baseY = img?.y || txt?.y || 0;
+			const deltaX = selectedId === id ? ui.x - baseX : ui.x - (canvasImages.find((i) => i.id === id)?.x || canvasTexts.find((t) => t.id === id)?.x || 0);
+			const deltaY = selectedId === id ? ui.y - baseY : ui.y - (canvasImages.find((i) => i.id === id)?.y || canvasTexts.find((t) => t.id === id)?.y || 0);
+
+			if (img) updateCanvasImage(selectedId, { x: baseX + deltaX, y: baseY + deltaY });
+			if (txt) updateCanvasText(selectedId, { x: baseX + deltaX, y: baseY + deltaY });
 		});
 	};
 
 	const handleDragStop = (e, ui, id) => {
 		handleDrag(e, ui, id);
 	};
-
 	const handleResizeStop = (id, newWidth, newHeight) => {
 		console.log(newHeight, newWidth);
 		updateCanvasImage(id, { currentWidth: newWidth, currentHeight: newHeight, baseWidth: newWidth, baseHeight: newHeight });
 	};
-
 	const handleImageDrop = (e) => {
 		e.preventDefault();
 		const sourceType = e.dataTransfer.getData('source/type');
@@ -138,17 +153,7 @@ const Canvas = forwardRef((props, ref) => {
 		};
 		addImageToCanvas(item, { x: e.clientX, y: e.clientY });
 	};
-	const handleCanvasItemClick = (e, id) => {
-		e.stopPropagation(); // Prevent canvas click from deselecting
-		if (e.shiftKey || e.metaKey || e.ctrlKey) {
-			toggleSelectedItem(id);
-		} else {
-			setSelectedItemIds([id]);
-		}
-	};
-	const handleCanvasClick = () => {
-		clearSelectedItems();
-	};
+
 	const addToCart = (id) => {
 		const cartUrl = `https://www.tonicliving.ca/cart/add?id=${id}&quantity=1`;
 		const newTab = window.open(cartUrl, '_blank', 'noopener');
@@ -160,7 +165,6 @@ const Canvas = forwardRef((props, ref) => {
 			console.error('Failed to open tab (popup blocker?)');
 		}
 	};
-
 	const bringToFront = (id) => {
 		const activeMoodboard = getMoodboardState();
 		if (!activeMoodboard) return;
@@ -169,7 +173,6 @@ const Canvas = forwardRef((props, ref) => {
 		const filteredImages = activeMoodboard.canvasImages.filter((img) => img.id !== id);
 		setMoodboardState({ canvasImages: [...filteredImages, imageToMove] });
 	};
-
 	const sendToBack = (id) => {
 		const activeMoodboard = getMoodboardState();
 		if (!activeMoodboard) return;
@@ -178,7 +181,6 @@ const Canvas = forwardRef((props, ref) => {
 		const filteredImages = activeMoodboard.canvasImages.filter((img) => img.id !== id);
 		setMoodboardState({ canvasImages: [imageToMove, ...filteredImages] });
 	};
-
 	const handleRemoveBackground = async (id, src) => {
 		updateCanvasImage(id, { isProcessing: true });
 		// /api/removebg original;
@@ -195,7 +197,6 @@ const Canvas = forwardRef((props, ref) => {
 			}
 			const blob = await response.blob();
 			const url = URL.createObjectURL(blob);
-
 			const reader = new FileReader();
 			reader.readAsDataURL(blob);
 			reader.onloadend = () => {
@@ -207,20 +208,16 @@ const Canvas = forwardRef((props, ref) => {
 			updateCanvasImage(id, { isProcessing: false });
 		}
 	};
-
 	useEffect(() => {
 		if (selectedItemIds.length > 0 && canvasRef.current) {
 			canvasRef.current.focus();
 		}
 	}, [selectedItemIds]);
-
 	useEffect(() => {
 		const MOVE_AMOUNT = 5;
 		const SMALL_MOVE_AMOUNT = 1;
-
 		const handleKeyDown = (e) => {
 			if (selectedItemIds.length === 0) return;
-
 			// Handle Delete/Backspace for both images and text
 			if (e.key === 'Delete' || e.key === 'Backspace') {
 				e.preventDefault();
@@ -230,7 +227,6 @@ const Canvas = forwardRef((props, ref) => {
 				clearSelectedItems();
 				return;
 			}
-
 			// Handle Cmd/Ctrl + B, =, - for text items
 			if (e.metaKey || e.ctrlKey) {
 				selectedItemIds.forEach((id) => {
@@ -248,14 +244,10 @@ const Canvas = forwardRef((props, ref) => {
 				});
 				return;
 			}
-
 			const moveBy = e.shiftKey ? SMALL_MOVE_AMOUNT : MOVE_AMOUNT;
-
 			const isArrowKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
-
 			if (isArrowKey) {
 				e.preventDefault();
-
 				selectedItemIds.forEach((id) => {
 					const img = canvasImages.find((img) => img.id === id);
 					if (img) {
@@ -267,7 +259,6 @@ const Canvas = forwardRef((props, ref) => {
 						if (e.key === 'ArrowRight') newX += moveBy;
 						updateCanvasImage(id, { x: newX, y: newY });
 					}
-
 					const txt = canvasTexts.find((txt) => txt.id === id);
 					if (txt) {
 						let newX = txt.x;
@@ -286,16 +277,13 @@ const Canvas = forwardRef((props, ref) => {
 			window.removeEventListener('keydown', handleKeyDown);
 		};
 	}, [selectedItemIds, canvasImages, canvasTexts, deleteCanvasItem, updateCanvasImage, updateCanvasText]);
-
 	const handleDeleteItem = (id) => {
 		deleteCanvasItem(id);
 		clearSelectedItems();
 	};
-
 	const handleUpdateText = (id, newProps) => {
 		updateCanvasText(id, newProps);
 	};
-
 	return (
 		<div
 			ref={canvasRef}

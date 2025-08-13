@@ -41,7 +41,7 @@ export default function DraggableText({ text, onStop, onDrag, onClick, isSelecte
 	};
 
 	return (
-		<Draggable nodeRef={nodeRef} position={{ x: text.x, y: text.y }} onStop={(e, ui) => onStop(e, ui, text.id)} onDrag={(e, ui) => onDrag(e, ui, text.id)}>
+		<Draggable nodeRef={nodeRef} position={{ x: text.x, y: text.y }} onStop={(e, ui) => onStop(e, ui, text.id)} onDrag={(e, ui) => onDrag(e, ui, text.id)} bounds='parent'>
 			<div ref={nodeRef} className={`absolute cursor-grab p-2 ${isSelected ? 'border-2 border-blue-500' : ''}`} onClick={(e) => onClick(e, text.id)} onDoubleClick={handleDoubleClick}>
 				<ContextMenu>
 					<ContextMenuTrigger className='w-full h-full'>
