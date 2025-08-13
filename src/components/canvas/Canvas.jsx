@@ -99,29 +99,25 @@ const Canvas = forwardRef((props, ref) => {
 	}));
 
 	const handleDrag = (e, ui, id) => {
-		if (!selectedItemIds.includes(id)) return;
-
-		const deltaX = ui.x - (canvasImages.find((img) => img.id === id)?.x || 0);
-		const deltaY = ui.y - (canvasImages.find((img) => img.id === id)?.y || 0);
+		const deltaX = ui.x - (canvasImages.find((img) => img.id === id)?.x || canvasTexts.find((txt) => txt.id === id)?.x || 0);
+		const deltaY = ui.y - (canvasImages.find((img) => img.id === id)?.y || canvasTexts.find((txt) => txt.id === id)?.y || 0);
 
 		selectedItemIds.forEach((selectedId) => {
+			const img = canvasImages.find((img) => img.id === selectedId);
+			const txt = canvasTexts.find((txt) => txt.id === selectedId);
+
 			if (selectedId === id) {
-				updateCanvasImage(selectedId, { x: ui.x, y: ui.y });
+				if (img) updateCanvasImage(selectedId, { x: ui.x, y: ui.y });
+				if (txt) updateCanvasText(selectedId, { x: ui.x, y: ui.y });
 			} else {
-				const img = canvasImages.find((img) => img.id === selectedId);
-				if (img) {
-					updateCanvasImage(selectedId, { x: img.x + deltaX, y: img.y + deltaY });
-				}
-				const txt = canvasTexts.find((txt) => txt.id === selectedId);
-				if (txt) {
-					updateCanvasText(selectedId, { x: txt.x + deltaX, y: txt.y + deltaY });
-				}
+				if (img) updateCanvasImage(selectedId, { x: img.x + deltaX, y: img.y + deltaY });
+				if (txt) updateCanvasText(selectedId, { x: txt.x + deltaX, y: txt.y + deltaY });
 			}
 		});
 	};
 
 	const handleDragStop = (e, ui, id) => {
-		handleDrag(e, ui, id); // reuse same logic for final position
+		handleDrag(e, ui, id);
 	};
 
 	const handleResizeStop = (id, newWidth, newHeight) => {

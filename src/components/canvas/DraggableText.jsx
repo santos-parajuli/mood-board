@@ -25,7 +25,9 @@ export default function DraggableText({ text, onStop, onDrag, onClick, isSelecte
 	};
 
 	const toggleBold = () => {
-		onUpdateText(text.id, { fontWeight: text.fontWeight === 'bold' ? 'normal' : 'bold' });
+		onUpdateText(text.id, {
+			fontWeight: text.fontWeight === 'bold' ? 'normal' : 'bold',
+		});
 	};
 
 	const increaseFontSize = () => {
@@ -33,14 +35,16 @@ export default function DraggableText({ text, onStop, onDrag, onClick, isSelecte
 	};
 
 	const decreaseFontSize = () => {
-		onUpdateText(text.id, { fontSize: Math.max(8, text.fontSize - 2) });
+		onUpdateText(text.id, {
+			fontSize: Math.max(8, text.fontSize - 2),
+		});
 	};
 
 	return (
 		<Draggable nodeRef={nodeRef} position={{ x: text.x, y: text.y }} onStop={(e, ui) => onStop(e, ui, text.id)} onDrag={(e, ui) => onDrag(e, ui, text.id)}>
 			<div ref={nodeRef} className={`absolute cursor-grab p-2 ${isSelected ? 'border-2 border-blue-500' : ''}`} onClick={(e) => onClick(e, text.id)} onDoubleClick={handleDoubleClick}>
 				<ContextMenu>
-					<ContextMenuTrigger>
+					<ContextMenuTrigger className='w-full h-full'>
 						{isEditing ? (
 							<input
 								type='text'
@@ -49,12 +53,22 @@ export default function DraggableText({ text, onStop, onDrag, onClick, isSelecte
 								onBlur={handleBlur}
 								autoFocus
 								className='bg-transparent border-none focus:outline-none'
-								style={{ fontWeight: text.fontWeight, fontSize: `${text.fontSize}px` }}
+								style={{
+									fontWeight: text.fontWeight,
+									fontSize: `${text.fontSize}px`,
+								}}
 							/>
 						) : (
-							<p style={{ fontWeight: text.fontWeight, fontSize: `${text.fontSize}px` }}>{text.text}</p>
+							<p
+								style={{
+									fontWeight: text.fontWeight,
+									fontSize: `${text.fontSize}px`,
+								}}>
+								{text.text}
+							</p>
 						)}
 					</ContextMenuTrigger>
+
 					<ContextMenuContent>
 						<ContextMenuItem onClick={toggleBold}>
 							<Bold className='mr-2 h-4 w-4' /> Bold
