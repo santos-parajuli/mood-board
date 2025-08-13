@@ -90,10 +90,8 @@ const Canvas = forwardRef((props, ref) => {
 	const handleCanvasItemClick = (e, id) => {
 		e.stopPropagation();
 		if (e.shiftKey || e.metaKey || e.ctrlKey) {
-			console.log('handleCanvasItemClick: toggleSelectedItem');
 			toggleSelectedItem(id);
 		} else {
-			console.log('handleCanvasItemClick: without multi select');
 			setSelectedItemIds([id]);
 		}
 	};
@@ -109,7 +107,6 @@ const Canvas = forwardRef((props, ref) => {
 		if (isDraggingUnselected) {
 			if (!isMultiSelectActive) {
 				// Replace selection with dragged item
-				console.log('handleDrag: no isMultiSelectActive');
 				newSelectedIds = [id];
 			}
 		}
@@ -137,7 +134,6 @@ const Canvas = forwardRef((props, ref) => {
 		handleDrag(e, ui, id);
 	};
 	const handleResizeStop = (id, newWidth, newHeight) => {
-		console.log(newHeight, newWidth);
 		updateCanvasImage(id, { currentWidth: newWidth, currentHeight: newHeight, baseWidth: newWidth, baseHeight: newHeight });
 	};
 	const handleImageDrop = (e) => {
@@ -217,10 +213,18 @@ const Canvas = forwardRef((props, ref) => {
 		const MOVE_AMOUNT = 5;
 		const SMALL_MOVE_AMOUNT = 1;
 		const handleKeyDown = (e) => {
-			if (selectedItemIds.length === 0) return;
+			if (!selectedItemIds || selectedItemIds.length === 0) return;
+			const activeEl = document.activeElement;
+			const isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+			// If editing a text input, let it handle keys
+			if (isEditingText) return;
 			// Handle Delete/Backspace for both images and text
+			console.log(selectedItemIds);
 			if (e.key === 'Delete' || e.key === 'Backspace') {
 				e.preventDefault();
+				if (selectedItemIds.length === 1 && typeof selectedItemIds[0] === 'string' && !e.shiftKey) {
+					return;
+				}
 				selectedItemIds.forEach((id) => {
 					deleteCanvasItem(id);
 				});

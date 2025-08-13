@@ -43,22 +43,24 @@ export default function DraggableText({ text, onStop, onDrag, onClick, isSelecte
 	return (
 		<Draggable nodeRef={nodeRef} position={{ x: text.x, y: text.y }} onStop={(e, ui) => onStop(e, ui, text.id)} onDrag={(e, ui) => onDrag(e, ui, text.id)} bounds='parent'>
 			<div ref={nodeRef} className={`absolute cursor-grab p-2 ${isSelected ? 'border-2 border-blue-500' : ''}`} onClick={(e) => onClick(e, text.id)} onDoubleClick={handleDoubleClick}>
-				<ContextMenu>
-					<ContextMenuTrigger className='w-full h-full'>
-						{isEditing ? (
-							<input
-								type='text'
-								value={inputValue}
-								onChange={handleChange}
-								onBlur={handleBlur}
-								autoFocus
-								className='bg-transparent border-none focus:outline-none'
-								style={{
-									fontWeight: text.fontWeight,
-									fontSize: `${text.fontSize}px`,
-								}}
-							/>
-						) : (
+				{isEditing ? (
+					<input
+						type='text'
+						value={inputValue}
+						onChange={handleChange}
+						onBlur={handleBlur}
+						autoFocus
+						onMouseDown={(e) => e.stopPropagation()} // important
+						onClick={(e) => e.stopPropagation()} // important
+						className='bg-transparent border-none focus:outline-none'
+						style={{
+							fontWeight: text.fontWeight,
+							fontSize: `${text.fontSize}px`,
+						}}
+					/>
+				) : (
+					<ContextMenu>
+						<ContextMenuTrigger className='w-full h-full'>
 							<p
 								style={{
 									fontWeight: text.fontWeight,
@@ -66,24 +68,24 @@ export default function DraggableText({ text, onStop, onDrag, onClick, isSelecte
 								}}>
 								{text.text}
 							</p>
-						)}
-					</ContextMenuTrigger>
+						</ContextMenuTrigger>
 
-					<ContextMenuContent>
-						<ContextMenuItem onClick={toggleBold}>
-							<Bold className='mr-2 h-4 w-4' /> Bold
-						</ContextMenuItem>
-						<ContextMenuItem onClick={increaseFontSize}>
-							<Plus className='mr-2 h-4 w-4' /> Increase Font
-						</ContextMenuItem>
-						<ContextMenuItem onClick={decreaseFontSize}>
-							<Minus className='mr-2 h-4 w-4' /> Decrease Font
-						</ContextMenuItem>
-						<ContextMenuItem onClick={() => onDeleteItem(text.id)} className='text-red-500 focus:text-red-500'>
-							<Trash2 className='mr-2 h-4 w-4' /> Delete
-						</ContextMenuItem>
-					</ContextMenuContent>
-				</ContextMenu>
+						<ContextMenuContent>
+							<ContextMenuItem onClick={toggleBold}>
+								<Bold className='mr-2 h-4 w-4' /> Bold
+							</ContextMenuItem>
+							<ContextMenuItem onClick={increaseFontSize}>
+								<Plus className='mr-2 h-4 w-4' /> Increase Font
+							</ContextMenuItem>
+							<ContextMenuItem onClick={decreaseFontSize}>
+								<Minus className='mr-2 h-4 w-4' /> Decrease Font
+							</ContextMenuItem>
+							<ContextMenuItem onClick={() => onDeleteItem(text.id)} className='text-red-500 focus:text-red-500'>
+								<Trash2 className='mr-2 h-4 w-4' /> Delete
+							</ContextMenuItem>
+						</ContextMenuContent>
+					</ContextMenu>
+				)}
 			</div>
 		</Draggable>
 	);
