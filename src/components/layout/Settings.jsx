@@ -1,4 +1,4 @@
-import { PlusCircle, SettingsIcon, Trash2 } from 'lucide-react';
+import { Copy, PlusCircle, SettingsIcon, Trash2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { useRef, useState } from 'react';
@@ -12,7 +12,7 @@ import useCanvasStore from '@/store/canvasStore';
 import useMoodboardStore from '@/store/moodboardStore';
 
 const Settings = () => {
-	const { moodboards, activeMoodboardId, getMoodboardState, setMoodboardState, region, setRegion, name, setName, createMoodboard, deleteMoodboard, selectMoodboard, allXlsxData, setAllXlsxData } = useMoodboardStore();
+	const { moodboards, activeMoodboardId, getMoodboardState, setMoodboardState, region, setRegion, name, setName, createMoodboard, deleteMoodboard, selectMoodboard, duplicateMoodboard, allXlsxData, setAllXlsxData } = useMoodboardStore();
 	const activeMoodboard = getMoodboardState();
 	const { canvasRef } = useCanvasStore();
 	const fileInputRef = useRef(null);
@@ -26,6 +26,10 @@ const Settings = () => {
 	};
 	const handleDeleteMoodboardClick = () => {
 		setIsDeleteDialogOpen(true);
+	};
+	const handleDuplicateMoodboard = () => {
+		duplicateMoodboard(activeMoodboardId);
+		toast.success('Moodboard duplicated!');
 	};
 	const handleConfirmDelete = () => {
 		if (moodboards.length <= 1) {
@@ -124,13 +128,13 @@ const Settings = () => {
 	};
 	const loadMoodboard = (event) => {
 		const file = event.target.files[0];
-		if (!file) {
-			return;
-		}
+		if (!file) return;
+
 		const reader = new FileReader();
 		reader.onload = async (e) => {
 			try {
 				let loadedState;
+
 				if (file.type === 'application/pdf') {
 					const pdfjsLib = require('pdfjs-dist');
 					pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.mjs`;
@@ -138,20 +142,24 @@ const Settings = () => {
 					const loadingTask = pdfjsLib.getDocument({ data: pdfData });
 					const pdfDoc = await loadingTask.promise;
 					const metadata = await pdfDoc.getMetadata();
-					if (metadata.metadata && metadata.metadata.get('jspdf:metadata')) {
-						loadedState = JSON.parse(metadata.metadata.get('jspdf:metadata'));
-					} else {
+					const compressedMetadata = metadata.info.moodboardData || metadata.metadata?.get('jspdf:metadata');
+
+					if (!compressedMetadata) {
 						toast.error('PDF does not contain moodboard data.');
 						return;
 					}
+					loadedState = JSON.parse(compressedMetadata);
 				} else if (file.type === 'application/json') {
 					loadedState = JSON.parse(e.target.result);
 				} else {
 					toast.error('Unsupported file type. Please load a JSON or PDF file.');
 					return;
 				}
+				console.log(loadedState);
+				// Restore basic info
 				setName(loadedState.name);
 				setRegion(loadedState.region);
+
 				for (const moodboard of loadedState.moodboards) {
 					const newMoodboardId = `moodboard-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 					createMoodboard();
@@ -165,17 +173,19 @@ const Settings = () => {
 						region: moodboard.region || 'CA',
 					});
 					selectMoodboard(newMoodboardId);
-					await new Promise((resolve) => setTimeout(resolve, 100));
+
+					// If you have background removal logic
 					if (canvasRef.current && moodboard.canvasImages) {
 						const imagePromises = moodboard.canvasImages.map((img) => {
-							if (img.originalSrc) {
-								return canvasRef.current.handleRemoveBackground(img.id, img.originalSrc);
+							if (img.src) {
+								return canvasRef.current.handleRemoveBackground(img.id, img.src);
 							}
 							return null;
 						});
 						await Promise.all(imagePromises.filter((p) => p));
 					}
 				}
+
 				deleteMoodboard('default-moodboard');
 				toast.success('Moodboard state loaded!');
 			} catch (error) {
@@ -183,12 +193,14 @@ const Settings = () => {
 				toast.error('Failed to load moodboard state. Invalid file.');
 			}
 		};
+
 		if (file.type === 'application/pdf') {
 			reader.readAsArrayBuffer(file);
 		} else {
 			reader.readAsText(file);
 		}
 	};
+
 	const handleImageUpload = (event) => {
 		const file = event.target.files[0];
 		if (!file) return;
@@ -263,6 +275,9 @@ const Settings = () => {
 								</Select>
 								<Button onClick={handleCreateMoodboard} variant='outline' size='icon'>
 									<PlusCircle className='h-4 w-4' />
+								</Button>
+								<Button onClick={handleDuplicateMoodboard} variant='outline' size='icon'>
+									<Copy className='h-4 w-4' />
 								</Button>
 								<Button onClick={handleDeleteMoodboardClick} variant='outline' size='icon' disabled={moodboards.length <= 1}>
 									<Trash2 className='h-4 w-4' />

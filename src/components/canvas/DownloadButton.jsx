@@ -298,7 +298,15 @@ const DownloadButton = () => {
 					}
 				}
 
-				const metadata = { moodboards, name, region };
+				const cleanedMoodboards = moodboards.map((board) => ({
+					...board,
+					canvasImages: board.canvasImages.map((img) => {
+						const { dataUrl, ...rest } = img;
+						return rest;
+					}),
+				}));
+				const metadata = { moodboards: cleanedMoodboards, name, region };
+				console.log(metadata);
 				pdf.addMetadata(JSON.stringify(metadata), 'jspdf:metadata');
 				pdf.save(`${name}.pdf`);
 				resolve('Mood boards downloaded successfully!');

@@ -77,6 +77,31 @@ const useMoodboardStore = create((set, get) => ({
 			};
 		});
 	},
+	duplicateMoodboard: (id) => {
+		set((state) => {
+			const moodboardToDuplicate = state.moodboards.find((m) => m.id === id);
+			if (!moodboardToDuplicate) return {};
+
+			const newMoodboard = {
+				...JSON.parse(JSON.stringify(moodboardToDuplicate)), // Deep copy
+				id: `moodboard-${Date.now()}`,
+			};
+
+			const originalIndex = state.moodboards.findIndex((m) => m.id === id);
+
+			const newMoodboards = [...state.moodboards.slice(0, originalIndex + 1), newMoodboard, ...state.moodboards.slice(originalIndex + 1)];
+
+			const renumberedMoodboards = newMoodboards.map((moodboard, index) => ({
+				...moodboard,
+				name: `${state.name} - ${index + 1}`,
+			}));
+
+			return {
+				moodboards: renumberedMoodboards,
+				activeMoodboardId: newMoodboard.id,
+			};
+		});
+	},
 	// Get active moodboard state
 	getMoodboardState: () => {
 		const state = get();
