@@ -301,7 +301,7 @@ const DownloadButton = () => {
 				const cleanedMoodboards = moodboards.map((board) => ({
 					...board,
 					canvasImages: board.canvasImages.map((img) => {
-						const { dataUrl, ...rest } = img;
+						const { dataUrl, src, ...rest } = img;
 						return rest;
 					}),
 				}));

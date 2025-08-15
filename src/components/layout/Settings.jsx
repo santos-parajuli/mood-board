@@ -163,10 +163,31 @@ const Settings = () => {
 				for (const moodboard of loadedState.moodboards) {
 					const newMoodboardId = `moodboard-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 					createMoodboard();
+
+					const newCanvasImages = [];
+					if (moodboard.canvasImages) {
+						for (const img of moodboard.canvasImages) {
+							if (img.dataUrl) {
+								const byteString = atob(img.dataUrl.split(',')[1]);
+								const mimeString = img.dataUrl.split(',')[0].split(':')[1].split(';')[0];
+								const ab = new ArrayBuffer(byteString.length);
+								const ia = new Uint8Array(ab);
+								for (let i = 0; i < byteString.length; i++) {
+									ia[i] = byteString.charCodeAt(i);
+								}
+								const blob = new Blob([ab], { type: mimeString });
+								const url = URL.createObjectURL(blob);
+								newCanvasImages.push({ ...img, originalSrc: url });
+							} else {
+								newCanvasImages.push(img);
+							}
+						}
+					}
+
 					setMoodboardState({
 						id: newMoodboardId,
 						name: moodboard.name || 'Loaded Moodboard',
-						canvasImages: moodboard.canvasImages || [],
+						canvasImages: newCanvasImages || [],
 						canvasTexts: moodboard.canvasTexts || [],
 						selectedGalleryItems: moodboard.selectedGalleryItems || [],
 						selectedComboboxItem: moodboard.selectedComboboxItem || '',
@@ -175,10 +196,10 @@ const Settings = () => {
 					selectMoodboard(newMoodboardId);
 
 					// If you have background removal logic
-					if (canvasRef.current && moodboard.canvasImages) {
-						const imagePromises = moodboard.canvasImages.map((img) => {
-							if (img.src) {
-								return canvasRef.current.handleRemoveBackground(img.id, img.src);
+					if (canvasRef.current && newCanvasImages) {
+						const imagePromises = newCanvasImages.map((img) => {
+							if (img.originalSrc && !img.dataUrl) {
+								return canvasRef.current.handleRemoveBackground(img.id, img.originalSrc);
 							}
 							return null;
 						});
