@@ -19,23 +19,13 @@ const DownloadButton = () => {
 
   // Calculate quality & scale dynamically based on image dimensions
   const getAdaptiveImageSettings = (width: number, height: number) => {
-    const totalPixels = width * height
-
-    // Very High Resolution (> 3 Megapixels) -> Compress more
-    if (totalPixels > 3_000_000) {
-      return { scaleFactor: 1.5, jpegQuality: 0.7 }
-    }
-    // Medium Resolution (1 - 3 Megapixels) -> Moderate Compression
-    else if (totalPixels > 1_000_000) {
-      return { scaleFactor: 2.0, jpegQuality: 0.8 }
-    }
-    // Low/Small Resolution (< 1 Megapixel) -> Keep High Quality
-    else {
-      return { scaleFactor: 2.5, jpegQuality: 0.9 }
-    }
+    const maxDim = Math.max(width, height)
+    // 2x scale capped at 1200px max raster dimension provides crisp 300 DPI print quality without bloated file sizes
+    const scaleFactor = Math.min(2, Math.max(1, 1200 / Math.max(1, maxDim)))
+    return { scaleFactor, jpegQuality: 0.88 }
   }
 
-  // Adaptive data URL processing for main images (JPEG)
+  // Adaptive data URL processing for main images (PNG for transparency, JPEG for photos)
   const toAdaptiveDataUrl = async (
     url: string
   ): Promise<HighQualityImageResult> => {
@@ -49,19 +39,28 @@ const DownloadButton = () => {
         )
 
         const canvas = document.createElement("canvas")
-        canvas.width = img.naturalWidth * scaleFactor
-        canvas.height = img.naturalHeight * scaleFactor
+        canvas.width = Math.round(img.naturalWidth * scaleFactor)
+        canvas.height = Math.round(img.naturalHeight * scaleFactor)
         const ctx = canvas.getContext("2d")
 
         if (ctx) {
           ctx.imageSmoothingEnabled = true
           ctx.imageSmoothingQuality = "high"
-          ctx.scale(scaleFactor, scaleFactor)
-          ctx.drawImage(img, 0, 0)
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
         }
 
+        const isTransparent =
+          url.endsWith(".png") ||
+          url.endsWith(".webp") ||
+          url.includes("transparent") ||
+          url.startsWith("data:image/png") ||
+          url.startsWith("data:image/webp")
+
         resolve({
-          dataUrl: canvas.toDataURL("image/jpeg", jpegQuality),
+          dataUrl: canvas.toDataURL(
+            isTransparent ? "image/png" : "image/jpeg",
+            jpegQuality
+          ),
           width: img.naturalWidth,
           height: img.naturalHeight,
         })
@@ -71,7 +70,7 @@ const DownloadButton = () => {
     })
   }
 
-  // PNG variant — preserves transparency for UI icons and logos
+  // PNG variant — preserves full fidelity and transparency for logos & UI icons
   const toHighQualityPngDataUrl = async (
     url: string
   ): Promise<HighQualityImageResult> => {
@@ -87,8 +86,7 @@ const DownloadButton = () => {
         if (ctx) {
           ctx.imageSmoothingEnabled = true
           ctx.imageSmoothingQuality = "high"
-          ctx.scale(QUALITY_SCALE_FACTOR, QUALITY_SCALE_FACTOR)
-          ctx.drawImage(img, 0, 0)
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
         }
         resolve({
           dataUrl: canvas.toDataURL("image/png"),
@@ -113,18 +111,19 @@ const DownloadButton = () => {
   ): Promise<void> => {
     const sourceMayHaveAlpha =
       imgData.startsWith("data:image/webp") ||
-      imgData.startsWith("data:image/png")
+      imgData.startsWith("data:image/png") ||
+      imgData.includes("transparent") ||
+      imgData.endsWith(".png") ||
+      imgData.endsWith(".webp")
 
     return new Promise((resolve) => {
       const img = new Image()
       img.onload = () => {
-        const { scaleFactor } = getAdaptiveImageSettings(
-          img.naturalWidth,
-          img.naturalHeight
-        )
+        // Size raster canvas to 2x the target point dimensions (crisp retina / print 300 DPI)
+        const rasterScale = 2
         const canvas = document.createElement("canvas")
-        canvas.width = targetWidth * scaleFactor
-        canvas.height = targetHeight * scaleFactor
+        canvas.width = Math.round(targetWidth * rasterScale)
+        canvas.height = Math.round(targetHeight * rasterScale)
         const ctx = canvas.getContext("2d")
 
         if (ctx) {
@@ -185,14 +184,14 @@ const DownloadButton = () => {
         pdf.addImage(
           outputFormat === "PNG"
             ? canvas.toDataURL("image/png")
-            : canvas.toDataURL("image/jpeg", 0.85),
+            : canvas.toDataURL("image/jpeg", 0.88),
           outputFormat,
           x,
           y,
           targetWidth,
           targetHeight,
           undefined,
-          "NONE"
+          "FAST"
         )
         resolve()
       }
@@ -215,6 +214,7 @@ const DownloadButton = () => {
           unit: "pt",
           format: [950, 612],
           hotfixes: ["px_scaling"],
+          compress: true,
         })
 
         pdf.setFontSize(12)
@@ -525,8 +525,19 @@ const DownloadButton = () => {
         const cleanedMoodboards = moodboards.map((board) => ({
           ...board,
           canvasImages: (board.canvasImages || []).map((img) => {
-            const { dataUrl, src, ...rest } = img
-            return rest
+            const { dataUrl, ...rest } = img
+            const isLocalDataUrl =
+              typeof img.src === "string" && img.src.startsWith("data:")
+            const remoteSource =
+              img.transparentImageUrl || img.originalSrc || (!isLocalDataUrl ? img.src : "")
+            const finalSrc = remoteSource || (isLocalDataUrl ? img.src : "") || ""
+
+            return {
+              ...rest,
+              src: finalSrc,
+              originalSrc: finalSrc,
+              transparentImageUrl: img.transparentImageUrl,
+            }
           }),
         }))
         const metadata = { moodboards: cleanedMoodboards, name, region }

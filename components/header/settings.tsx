@@ -29,6 +29,11 @@ import useCanvasStore from "@/lib/store/canvasStore"
 import DeleteMoodboardDialog from "./deletemoodboarddialog"
 
 import { CanvasImageItem } from "@/lib/types"
+import {
+  autocropTransparentImage,
+  downscaleImageForApi,
+  removeWhiteBackground,
+} from "@/lib/utils/imageOptimizer"
 
 const Settings = () => {
   const {
@@ -44,6 +49,8 @@ const Settings = () => {
     deleteMoodboard,
     selectMoodboard,
     duplicateMoodboard,
+    updateCanvasImage,
+    setLoadedMoodboards,
   } = useMoodboardStore()
 
   const activeMoodboard = getMoodboardState()
@@ -96,7 +103,7 @@ const Settings = () => {
 
         if (file.type === "application/pdf") {
           const pdfjsLib = require("pdfjs-dist")
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.mjs`
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
           const pdfData = new Uint8Array(result as ArrayBuffer)
           const loadingTask = pdfjsLib.getDocument({ data: pdfData })
           const pdfDoc = await loadingTask.promise
@@ -117,70 +124,96 @@ const Settings = () => {
           return
         }
 
-        setName(loadedState.name)
-        setRegion(loadedState.region)
+        if (loadedState.name) setName(loadedState.name)
+        if (loadedState.region) setRegion(loadedState.region)
 
-        for (const moodboard of loadedState.moodboards) {
-          const newMoodboardId = `moodboard-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-          createMoodboard()
+        if (Array.isArray(loadedState.moodboards) && loadedState.moodboards.length > 0) {
+          const restoredMoodboards = loadedState.moodboards.map(
+            (moodboard: any, i: number) => {
+              const newMoodboardId =
+                moodboard.id ||
+                `moodboard-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`
 
-          const newCanvasImages: any[] = []
-          if (moodboard.canvasImages) {
-            for (const img of moodboard.canvasImages) {
-              if (img.dataUrl) {
-                const byteString = atob(img.dataUrl.split(",")[1])
-                const mimeString = img.dataUrl
-                  .split(",")[0]
-                  .split(":")[1]
-                  .split(";")[0]
-                const ab = new ArrayBuffer(byteString.length)
-                const ia = new Uint8Array(ab)
-                for (let i = 0; i < byteString.length; i++) {
-                  ia[i] = byteString.charCodeAt(i)
+              const restoredImages = (moodboard.canvasImages || []).map(
+                (img: any) => {
+                  const transparentUrl =
+                    img.transparentImageUrl ||
+                    img.transparent_image_url ||
+                    img.transparent_url
+                  const hasTransparentImage = Boolean(transparentUrl)
+                  const persistedDataUrl =
+                    typeof img.src === "string" && img.src.startsWith("data:")
+                      ? img.src
+                      : typeof img.dataUrl === "string" &&
+                          img.dataUrl.startsWith("data:")
+                        ? img.dataUrl
+                        : null
+                  const imageSrc =
+                    persistedDataUrl ||
+                    transparentUrl ||
+                    img.src ||
+                    img.originalSrc ||
+                    ""
+
+                  return {
+                    ...img,
+                    src: imageSrc,
+                    originalSrc: imageSrc,
+                    isProcessing: false,
+                  }
                 }
-                const blob = new Blob([ab], { type: mimeString })
-                const url = URL.createObjectURL(blob)
-                newCanvasImages.push({ ...img, originalSrc: url })
-              } else {
-                newCanvasImages.push(img)
+              )
+
+              const restoredTexts = (moodboard.canvasTexts || []).map(
+                (txt: any) => ({
+                  ...txt,
+                })
+              )
+
+              return {
+                id: newMoodboardId,
+                name:
+                  moodboard.name ||
+                  `${loadedState.name || "Moodboard"} - ${i + 1}`,
+                canvasImages: restoredImages,
+                canvasTexts: restoredTexts,
+                selectedGalleryItems: moodboard.selectedGalleryItems || [],
+                selectedComboboxItem: moodboard.selectedComboboxItem || "",
               }
             }
-          }
+          )
 
-          setMoodboardState({
-            id: newMoodboardId,
-            name: moodboard.name || "Loaded Moodboard",
-            canvasImages: newCanvasImages || [],
-            canvasTexts: moodboard.canvasTexts || [],
-            selectedGalleryItems: moodboard.selectedGalleryItems || [],
-            selectedComboboxItem: moodboard.selectedComboboxItem || "",
-          })
-          selectMoodboard(newMoodboardId)
+          // Replace moodboards in store completely — NO extra or leftover pages!
+          setLoadedMoodboards(restoredMoodboards, restoredMoodboards[0]?.id)
 
-          // FIXED WARNINGS: Safe contextual resolution checks matching updated CanvasStore types
-          const targetCanvas =
-            canvasRef && "current" in canvasRef ? canvasRef.current : canvasRef
-          if (
-            targetCanvas &&
-            typeof (targetCanvas as any).handleRemoveBackground ===
-              "function" &&
-            newCanvasImages.length > 0
-          ) {
-            const imagePromises = newCanvasImages.map((img) => {
-              if (img.originalSrc && !img.dataUrl) {
-                return (targetCanvas as any).handleRemoveBackground(
-                  img.id,
-                  img.originalSrc
-                )
+          // Background auto-crop if needed for transparent items without pre-rendered data URLs
+          restoredMoodboards.forEach((mb: any) => {
+            ;(mb.canvasImages || []).forEach((img: any) => {
+              const transparentUrl =
+                img.transparentImageUrl ||
+                img.transparent_image_url ||
+                img.transparent_url
+              if (
+                transparentUrl &&
+                (!img.src || !img.src.startsWith("data:"))
+              ) {
+                autocropTransparentImage(transparentUrl)
+                  .then((croppedSrc) => {
+                    updateCanvasImage(img.id, {
+                      src: croppedSrc,
+                      dataUrl: croppedSrc,
+                      isProcessing: false,
+                    })
+                  })
+                  .catch(() => {
+                    updateCanvasImage(img.id, { isProcessing: false })
+                  })
               }
-              return null
             })
-            await Promise.all(imagePromises.filter((p) => p))
-          }
+          })
         }
 
-        deleteMoodboard("default-moodboard")
-        toast.success("Moodboard state loaded!")
+        toast.success("Moodboard state loaded successfully!")
       } catch (error) {
         console.error("Error parsing file:", error)
         toast.error("Failed to load moodboard state. Invalid file.")

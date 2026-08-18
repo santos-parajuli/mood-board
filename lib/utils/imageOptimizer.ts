@@ -1,7 +1,10 @@
+import { Mode } from "@/lib/types"
+
 /**
  * Client-side Image Optimization Utilities
- * 1A: Downscales high-res images before sending to background removal API.
+ * 1A: Downscales high-res images before background/transparency processing.
  * 2A: Automatically crops empty transparent padding around cutout images.
+ * 3A: Removes white backgrounds client-side (replaces the old /api/removebg route).
  */
 
 /**
@@ -174,6 +177,103 @@ export async function autocropTransparentImage(
         // If canvas is tainted (CORS), return original URL gracefully
         console.warn(
           "Autocrop skipped due to canvas security restriction:",
+          err
+        )
+        resolve(imageUrl)
+      }
+    }
+
+    img.onerror = () => {
+      resolve(imageUrl)
+    }
+
+    img.src = imageUrl
+  })
+}
+
+/**
+ * 3A: Removes white/light backgrounds client-side and returns a transparent PNG.
+ * Mirrors the old /api/removebg endpoint (same auto-threshold algorithm) but runs
+ * entirely in the browser via Canvas 2D — no server round-trip, no SSRF surface.
+ *
+ * The returned image keeps its original dimensions; callers should follow up
+ * with autocropTransparentImage() to trim any surrounding transparent padding.
+ */
+export async function removeWhiteBackground(
+  imageUrl: string,
+  mode: Mode = "auto"
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.onload = async () => {
+      // YIELD TO UI: Let React paint the "Processing" skeleton before we freeze the thread
+      await new Promise((r) => setTimeout(r, 0))
+
+      const width = img.naturalWidth
+      const height = img.naturalHeight
+
+      const canvas = document.createElement("canvas")
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+
+      if (!ctx || width === 0 || height === 0) {
+        resolve(imageUrl)
+        return
+      }
+
+      ctx.drawImage(img, 0, 0)
+
+      try {
+        const imageData = ctx.getImageData(0, 0, width, height)
+        const data = imageData.data
+
+        // Step 1: Determine a dynamic threshold for white removal
+        let threshold = 250
+        if (mode === "auto") {
+          let totalBrightness = 0
+          let count = 0
+
+          for (let i = 0; i < data.length; i += 16 * 4) {
+            const r = data[i]
+            const g = data[i + 1]
+            const b = data[i + 2]
+            totalBrightness += (r + g + b) / 3
+            count++
+          }
+
+          const avgBrightness = count > 0 ? totalBrightness / count : 0
+          threshold =
+            avgBrightness > 222
+              ? 250
+              : avgBrightness > 200
+                ? 240
+                : avgBrightness > 180
+                  ? 230
+                  : avgBrightness > 160
+                    ? 220
+                    : 210
+        }
+
+        // Step 2: Make white pixels transparent based on the threshold
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i]
+          const g = data[i + 1]
+          const b = data[i + 2]
+          if (r >= threshold && g >= threshold && b >= threshold) {
+            data[i + 3] = 0 // Set alpha to 0 (transparent)
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0)
+
+        // Export as lossless PNG to preserve transparent alpha channels
+        resolve(canvas.toDataURL("image/png"))
+      } catch (err) {
+        // If canvas is tainted (CORS) or getImageData fails, fall back gracefully
+        console.warn(
+          "removeWhiteBackground skipped due to canvas security restriction:",
           err
         )
         resolve(imageUrl)

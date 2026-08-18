@@ -231,6 +231,35 @@ const useMoodboardStore = create<MoodboardState>((set, get) => ({
     })
   },
 
+  setLoadedMoodboards: (loadedMoodboards, activeId) => {
+    set((state: MoodboardState) => {
+      const activeMoodboardId =
+        activeId ||
+        (loadedMoodboards.length > 0 ? loadedMoodboards[0].id : null)
+      const histories: Record<string, any> = {}
+      const historyIndexes: Record<string, number> = {}
+
+      loadedMoodboards.forEach((mb) => {
+        histories[mb.id] = [
+          {
+            canvasImages: JSON.parse(JSON.stringify(mb.canvasImages || [])),
+            canvasTexts: JSON.parse(JSON.stringify(mb.canvasTexts || [])),
+          },
+        ]
+        historyIndexes[mb.id] = 0
+      })
+
+      return {
+        moodboards: loadedMoodboards,
+        activeMoodboardId,
+        histories,
+        historyIndexes,
+        selectedItemIds: [],
+        resizingImageId: null,
+      }
+    })
+  },
+
   getMoodboardState: () => {
     const state = get()
     return state.moodboards.find((mb) => mb.id === state.activeMoodboardId)

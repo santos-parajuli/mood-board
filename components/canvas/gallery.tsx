@@ -83,11 +83,18 @@ export default function Gallery({ canvasRef }: GalleryProps) {
         relatedMap.set(item.id, item)
       )
       try {
-        // Fetch COMPLEMENTARY intent for "Goes Well With"
-        const compRes = await shopifyFetch(SHOPIFY_RECOMMENDATIONS_QUERY, {
-          productId: activeMainProduct.id,
-          intent: "COMPLEMENTARY",
-        })
+        // Fetch COMPLEMENTARY & RELATED intents in parallel (50% faster network load)
+        const [compRes, relRes] = await Promise.all([
+          shopifyFetch(SHOPIFY_RECOMMENDATIONS_QUERY, {
+            productId: activeMainProduct.id,
+            intent: "COMPLEMENTARY",
+          }).catch(() => null),
+          shopifyFetch(SHOPIFY_RECOMMENDATIONS_QUERY, {
+            productId: activeMainProduct.id,
+            intent: "RELATED",
+          }).catch(() => null),
+        ])
+
         const compNodes = compRes?.productRecommendations || []
         compNodes.forEach((prod: any) => {
           if (!complementaryMap.has(prod.id)) {
@@ -95,11 +102,6 @@ export default function Gallery({ canvasRef }: GalleryProps) {
           }
         })
 
-        // Fetch RELATED intent for "You May Also Like"
-        const relRes = await shopifyFetch(SHOPIFY_RECOMMENDATIONS_QUERY, {
-          productId: activeMainProduct.id,
-          intent: "RELATED",
-        })
         const relNodes = relRes?.productRecommendations || []
         relNodes.forEach((prod: any) => {
           if (!relatedMap.has(prod.id)) {

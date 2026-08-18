@@ -33,6 +33,7 @@ import {
 import {
   downscaleImageForApi,
   autocropTransparentImage,
+  removeWhiteBackground,
 } from "@/lib/utils/imageOptimizer"
 
 const DEFAULT_INITIAL_CANVAS_IMAGE_SIZE = 100
@@ -251,6 +252,9 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
       id: newId,
       src: imageSrc,
       originalSrc: imageSrc,
+      // Persist the transparent cut-out source so export→import round-trips it,
+      // letting restore route pillows through autocrop-only (→ trimmed PNG).
+      transparentImageUrl: transparentUrl || undefined,
       alt: item.title || item.alt || "Pillow Asset",
       x,
       y,
@@ -264,11 +268,18 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
       withInsertID: item.withInsertID,
       withoutInsertID: item.withoutInsertID,
       uploadedFromSubheader: !!item.uploadedFromSubheader,
-      isProcessing: hasTransparentImage, // Skeleton only while autocropping transparent images
+      isProcessing: item.uploadedFromSubheader ? false : true,
     }
 
     addCanvasImage(newImage, true)
     setSelectedItemIds([newId])
+
+    // If uploaded directly from subheader/user, do not remove background automatically.
+    // The user can click the "Remove BG" toolbar button at any time.
+    if (item.uploadedFromSubheader) {
+      updateCanvasImage(newId, { isProcessing: false })
+      return
+    }
 
     // 2. Autocrop transparent padding in background (non-blocking, exports as lossless PNG)
     if (hasTransparentImage) {
@@ -287,7 +298,6 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
       }
       runAutocrop()
     } else {
-      console.log("hi")
       handleRemoveBackground(newId, imageSrc)
     }
   }
@@ -296,27 +306,16 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
     updateCanvasImage(id, { isProcessing: true }, true)
     try {
       const optimizedSrc = await downscaleImageForApi(src, 500)
-      const response = await fetch("/api/removebg", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: optimizedSrc }),
+      // Client-side background removal — no server round-trip, no SSRF surface
+      const base64data = await removeWhiteBackground(optimizedSrc)
+      // Solution 2A: Automatically crop transparent padding from background-removed image
+      const trimmedDataUrl = await autocropTransparentImage(base64data)
+      // Final transparent image — commit to history
+      updateCanvasImage(id, {
+        src: trimmedDataUrl,
+        dataUrl: trimmedDataUrl,
+        isProcessing: false,
       })
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`)
-      const blob = await response.blob()
-      const reader = new FileReader()
-      reader.readAsDataURL(blob)
-      reader.onloadend = async () => {
-        const base64data = reader.result as string
-        // Solution 2A: Automatically crop transparent padding from background-removed image
-        const trimmedDataUrl = await autocropTransparentImage(base64data)
-        // Final transparent image — commit to history
-        updateCanvasImage(id, {
-          src: trimmedDataUrl,
-          dataUrl: trimmedDataUrl,
-          isProcessing: false,
-        })
-      }
     } catch (error) {
       console.error("Failed to remove background:", error)
       // Failed — still commit current state to history so the image is recorded
@@ -507,6 +506,106 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
     [deleteCanvasItem, clearSelectedItems]
   )
 
+  const handleDuplicate = useCallback(
+    (targetId?: string | number) => {
+      const idsToDuplicate = (() => {
+        if (targetId !== undefined) {
+          const item =
+            canvasImages.find((img) => img.id === targetId) ||
+            canvasTexts.find((txt) => txt.id === targetId)
+          if (item?.groupId) {
+            const groupImgs = canvasImages
+              .filter((img) => img.groupId === item.groupId)
+              .map((img) => img.id)
+            const groupTxts = canvasTexts
+              .filter((txt) => txt.groupId === item.groupId)
+              .map((txt) => txt.id)
+            return [...new Set([...groupImgs, ...groupTxts])]
+          }
+          return [targetId]
+        }
+        return selectedItemIds
+      })()
+
+      if (idsToDuplicate.length === 0) return
+
+      const groupIdMap = new Map<string, string>()
+      const getNewGroupId = (oldGroupId?: string) => {
+        if (!oldGroupId) return undefined
+        if (!groupIdMap.has(oldGroupId)) {
+          groupIdMap.set(
+            oldGroupId,
+            `group-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+          )
+        }
+        return groupIdMap.get(oldGroupId)
+      }
+
+      const newSelectedIds: (string | number)[] = []
+
+      canvasImages
+        .filter((img) => idsToDuplicate.includes(img.id))
+        .forEach((img) => {
+          const newId = `image-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+          const duplicate: CanvasImageItem = {
+            ...JSON.parse(JSON.stringify(img)),
+            id: newId,
+            x: img.x + 20,
+            y: img.y + 20,
+            groupId: getNewGroupId(img.groupId),
+          }
+          addCanvasImage(duplicate, true)
+          newSelectedIds.push(newId)
+        })
+
+      canvasTexts
+        .filter((txt) => idsToDuplicate.includes(txt.id))
+        .forEach((txt) => {
+          const newId = `text-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+          const duplicate: CanvasTextItem = {
+            ...JSON.parse(JSON.stringify(txt)),
+            id: newId,
+            x: txt.x + 20,
+            y: txt.y + 20,
+            groupId: getNewGroupId(txt.groupId),
+          }
+          addCanvasText(duplicate)
+          newSelectedIds.push(newId)
+        })
+
+      if (newSelectedIds.length > 0) {
+        setSelectedItemIds(newSelectedIds)
+        toast.success(
+          `Duplicated ${newSelectedIds.length} item${newSelectedIds.length > 1 ? "s" : ""}`
+        )
+      }
+    },
+    [
+      canvasImages,
+      canvasTexts,
+      selectedItemIds,
+      addCanvasImage,
+      addCanvasText,
+      setSelectedItemIds,
+    ]
+  )
+
+  const handleResetSize = useCallback(
+    (id: string | number) => {
+      const item = canvasImages.find((img) => img.id === id)
+      if (!item) return
+      const origW = item.originalWidth || item.baseWidth
+      const origH = item.originalHeight || item.baseHeight
+      updateCanvasImage(id, {
+        currentWidth: origW,
+        currentHeight: origH,
+        baseWidth: origW,
+        baseHeight: origH,
+      })
+    },
+    [canvasImages, updateCanvasImage]
+  )
+
   const handleUpdateText = useCallback(
     (id: string, newProps: Partial<CanvasTextItem>) => {
       updateCanvasText(id, newProps)
@@ -662,6 +761,13 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
           return
         }
 
+        // ⌘D: Duplicate selected items
+        if (e.key.toLowerCase() === "d") {
+          e.preventDefault()
+          handleDuplicate()
+          return
+        }
+
         if (e.key.toLowerCase() === "c") {
           e.preventDefault()
           const selectedImages = canvasImages.filter((img) =>
@@ -762,6 +868,7 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
     ungroupSelectedItems,
     undo,
     redo,
+    handleDuplicate,
   ])
 
   // Expose reference via canvasStore
@@ -795,6 +902,17 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
       ) {
         e.preventDefault()
         const newSelectedIds: (string | number)[] = []
+        const groupIdMap = new Map<string, string>()
+        const getNewGroupId = (oldGroupId?: string) => {
+          if (!oldGroupId) return undefined
+          if (!groupIdMap.has(oldGroupId)) {
+            groupIdMap.set(
+              oldGroupId,
+              `group-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+            )
+          }
+          return groupIdMap.get(oldGroupId)
+        }
 
         copiedItemsRef.current.images.forEach((img) => {
           const newId = `image-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
@@ -803,6 +921,7 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
             id: newId,
             x: img.x + 20,
             y: img.y + 20,
+            groupId: getNewGroupId(img.groupId),
           }
           addCanvasImage(pastedImg)
           newSelectedIds.push(newId)
@@ -815,13 +934,16 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
             id: newId,
             x: txt.x + 20,
             y: txt.y + 20,
+            groupId: getNewGroupId(txt.groupId),
           }
           addCanvasText(pastedTxt)
           newSelectedIds.push(newId)
         })
 
         setSelectedItemIds(newSelectedIds)
-        toast.success(`Duplicated ${newSelectedIds.length} items`)
+        toast.success(
+          `Pasted ${newSelectedIds.length} item${newSelectedIds.length > 1 ? "s" : ""}`
+        )
         return
       }
 
@@ -907,6 +1029,8 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
             addToCart={addToCart}
             onResizeStop={handleResizeStop}
             onCrop={startCrop}
+            onDuplicate={handleDuplicate}
+            onResetSize={handleResetSize}
           />
         ))}
         {Array.isArray(canvasTexts) &&
@@ -971,7 +1095,7 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
               </Button>
               <Button
                 onClick={applyCrop}
-                className="rounded bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                className="rounded bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
               >
                 Apply Crop
               </Button>

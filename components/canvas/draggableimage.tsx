@@ -4,16 +4,21 @@ import "react-resizable/css/styles.css"
 
 import {
   BringToFront,
+  Copy,
+  Crop,
+  ExternalLink,
   Maximize,
+  RotateCcw,
   SendToBack,
   ShoppingCart,
   Trash2,
-  Crop,
 } from "lucide-react"
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import React, { useRef, useState, useEffect } from "react"
@@ -38,13 +43,25 @@ function DraggableImageComponent({
   addToCart,
   onResizeStop,
   onCrop,
+  onDuplicate,
+  onResetSize,
 }: DraggableImageProps) {
   const nodeRef = useRef<HTMLDivElement>(null)
   const [internalIsResizing, setInternalIsResizing] = useState(false)
   const [activeHandle, setActiveHandle] = useState<string>("")
-  const [isHovered, setIsHovered] = useState(false)
   const [liveWidth, setLiveWidth] = useState<number | null>(null)
   const [liveHeight, setLiveHeight] = useState<number | null>(null)
+
+  // Cooldown & drag refs: suppress click-outside detection while dragging handles or right after resize stop
+  const resizeCooldownRef = useRef(false)
+  const isDraggingHandleRef = useRef(false)
+
+  // Sync internal state when external isResizingProp (Subheader button) activates
+  useEffect(() => {
+    if (isResizingProp) {
+      setInternalIsResizing(true)
+    }
+  }, [isResizingProp])
 
   // Controlled or uncontrolled resizing mode
   const isResizing = isResizingProp || internalIsResizing
@@ -60,6 +77,12 @@ function DraggableImageComponent({
   const displayLabel = `${currentInchesHeight}" × ${currentInchesWidth}"`
   const displayBadgeLabel = `${currentInchesHeight}"×${currentInchesWidth}"`
 
+  const isCustomUploaded = Boolean(
+    img.uploadedFromSubheader ||
+    img.uploaded ||
+    (typeof img.id === "string" && img.id.startsWith("ref-image-"))
+  )
+
   const handleResize = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
     setLiveWidth(data.size.width)
     setLiveHeight(data.size.height)
@@ -67,6 +90,11 @@ function DraggableImageComponent({
 
   const isCornerHandle = (handle: string) =>
     ["nw", "ne", "sw", "se"].includes(handle)
+
+  const handleResizeStart = (_e: React.SyntheticEvent, data: ResizeCallbackData) => {
+    setActiveHandle(data.handle)
+    isDraggingHandleRef.current = true
+  }
 
   const handleResizeStop = (
     e: React.SyntheticEvent,
@@ -76,6 +104,14 @@ function DraggableImageComponent({
     setActiveHandle("")
     setLiveWidth(null)
     setLiveHeight(null)
+    isDraggingHandleRef.current = false
+
+    // Set cooldown so the click-outside handler ignores mouseup/click events
+    // after finishing handle drag
+    resizeCooldownRef.current = true
+    setTimeout(() => {
+      resizeCooldownRef.current = false
+    }, 400)
   }
 
   // Exit resize mode when clicking outside this image
@@ -83,29 +119,49 @@ function DraggableImageComponent({
     if (!isResizing) return
 
     const handleClickOutside = (e: MouseEvent) => {
+      // Ignore clicks while dragging handle or during post-resize cooldown
+      if (isDraggingHandleRef.current || resizeCooldownRef.current) return
+
       const target = e.target as Element
-      // Don't turn off resize mode if clicking inside the image container, subheader, or on react-resizable handles
+
+      // Guard against stale DOM targets (removed during React re-render)
+      if (target && !document.contains(target)) return
+
+      // Don't exit resize mode if clicking inside the image container, subheader, or on react-resizable handles
       if (
         nodeRef.current &&
         !nodeRef.current.contains(target) &&
         !target.closest(".subheader-wrapper") &&
         !target.closest(".react-resizable-handle")
       ) {
-        if (setIsResizing) setIsResizing(false)
+        setIsResizing(false)
         setActiveHandle("")
       }
     }
 
-    // Use click event (rather than mousedown) so finishing a drag handle release doesn't count as clicking outside
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault()
+        setIsResizing(false)
+        setActiveHandle("")
+      }
+    }
+
+    // Delay attaching click listener so initial button click doesn't immediately exit
     const timer = setTimeout(() => {
       document.addEventListener("click", handleClickOutside)
-    }, 100)
+    }, 150)
+    window.addEventListener("keydown", handleKeyDown)
 
     return () => {
       clearTimeout(timer)
       document.removeEventListener("click", handleClickOutside)
+      window.removeEventListener("keydown", handleKeyDown)
     }
   }, [isResizing])
+
+  // Whether the dimension label should show during active resize drag
+  const isActivelyDraggingResize = liveWidth !== null
 
   return (
     <Draggable
@@ -119,10 +175,12 @@ function DraggableImageComponent({
       <div
         ref={nodeRef}
         onDragStart={(e) => e.preventDefault()}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
         className={`absolute cursor-grab border-2 ${
-          isSelected ? "border-blue-300" : "border-transparent"
+          isResizing
+            ? "border-dashed border-blue-500"
+            : isSelected
+              ? "border-blue-300"
+              : "border-transparent"
         }`}
         style={{
           width: img.currentWidth,
@@ -136,17 +194,17 @@ function DraggableImageComponent({
             minConstraints={[30, 30]}
             maxConstraints={[Infinity, Infinity]}
             lockAspectRatio={
-              !img.uploadedFromSubheader || isCornerHandle(activeHandle)
+              !isCustomUploaded || isCornerHandle(activeHandle)
             }
             resizeHandles={
-              !img.uploadedFromSubheader
+              !isCustomUploaded
                 ? ["nw", "ne", "sw", "se"]
                 : ["n", "s", "e", "w", "nw", "ne", "sw", "se"]
             }
-            onResizeStart={(_e, data) => setActiveHandle(data.handle)}
+            onResizeStart={handleResizeStart}
             onResize={handleResize}
             onResizeStop={handleResizeStop}
-            className="relative h-full w-full p-2"
+            className="relative h-full w-full"
           >
             <>
               <img
@@ -154,7 +212,7 @@ function DraggableImageComponent({
                 alt={img.alt}
                 draggable={false}
                 className={`h-full w-full ${
-                  img.uploadedFromSubheader ? "object-cover" : "object-contain"
+                  isCustomUploaded ? "object-cover" : "object-contain"
                 }`}
               />
               {img.isProcessing && (
@@ -162,10 +220,12 @@ function DraggableImageComponent({
                   <Skeleton className="h-full w-full rounded-xl" />
                 </div>
               )}
-              {/* Live Resize Dimensions Overlay */}
-              <div className="pointer-events-none absolute -top-7 left-1/2 z-50 -translate-x-1/2 rounded bg-black/80 px-2 py-0.5 font-mono text-[10px] font-medium whitespace-nowrap text-white shadow-md">
-                {displayLabel}
-              </div>
+              {/* Live Resize Dimensions Overlay — only while actively dragging a handle */}
+              {isActivelyDraggingResize && (
+                <div className="pointer-events-none absolute -top-7 left-1/2 z-50 -translate-x-1/2 rounded bg-black/80 px-2 py-0.5 font-mono text-[10px] font-medium whitespace-nowrap text-white shadow-md">
+                  {displayLabel}
+                </div>
+              )}
             </>
           </ResizableBox>
         ) : (
@@ -180,7 +240,7 @@ function DraggableImageComponent({
                   alt={img.alt}
                   draggable={false}
                   className={`h-full w-full ${
-                    img.uploadedFromSubheader
+                    isCustomUploaded
                       ? "object-cover"
                       : "object-contain"
                   } `}
@@ -190,45 +250,62 @@ function DraggableImageComponent({
                     <Skeleton className="h-full w-full rounded-xl" />
                   </div>
                 )}
-                {/* Hover / Selection Pillow Dimension Badge */}
-                {(isSelected || isHovered) && !isResizing && (
+                {/* Selection Pillow Dimension Badge (shown on click/selection, not hover) */}
+                {isSelected && !isResizing && (
                   <div className="pointer-events-none absolute right-1 bottom-1 z-30 rounded-md bg-black/75 px-1.5 py-0.5 font-mono text-[9px] font-medium text-white shadow-xs transition-opacity select-none">
                     {displayBadgeLabel}
                   </div>
                 )}
               </ContextMenuTrigger>
-              <ContextMenuContent>
+              <ContextMenuContent className="w-52">
+                {/* ── Arrange ── */}
                 <ContextMenuItem onClick={() => onBringToFront(img.id)}>
                   <BringToFront className="mr-2 h-4 w-4" /> Bring to Front
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => onSendToBack(img.id)}>
                   <SendToBack className="mr-2 h-4 w-4" /> Send to Back
                 </ContextMenuItem>
-                {img.withInsertID && (
-                  <ContextMenuItem onClick={() => addToCart(img.withInsertID!)}>
-                    <ShoppingCart className="mr-2 h-4 w-4" />
-                    Add to Cart (with insert)
-                  </ContextMenuItem>
-                )}
-                {img.withoutInsertID && (
-                  <ContextMenuItem
-                    onClick={() => addToCart(img.withoutInsertID!)}
-                  >
-                    <ShoppingCart className="mr-2 h-4 w-4" />
-                    Add to Cart (without insert)
-                  </ContextMenuItem>
-                )}
+
+                <ContextMenuSeparator />
+
+                {/* ── Edit ── */}
+                <ContextMenuItem onClick={() => onDuplicate(img.id)}>
+                  <Copy className="mr-2 h-4 w-4" /> Duplicate
+                  <ContextMenuShortcut>⌘D</ContextMenuShortcut>
+                </ContextMenuItem>
                 <ContextMenuItem onClick={() => setIsResizing(true)}>
                   <Maximize className="mr-2 h-4 w-4" /> Resize
                 </ContextMenuItem>
                 <ContextMenuItem onClick={() => onCrop(img.id)}>
                   <Crop className="mr-2 h-4 w-4" /> Crop
                 </ContextMenuItem>
+                <ContextMenuItem onClick={() => onResetSize(img.id)}>
+                  <RotateCcw className="mr-2 h-4 w-4" /> Reset Size
+                </ContextMenuItem>
+
+                {/* ── Product Link ── */}
+                {img.pillowUrl && (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      onClick={() =>
+                        window.open(img.pillowUrl, "_blank", "noopener")
+                      }
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" /> View Product
+                    </ContextMenuItem>
+                  </>
+                )}
+
+                <ContextMenuSeparator />
+
+                {/* ── Destructive ── */}
                 <ContextMenuItem
                   onClick={() => onDeleteItem(img.id)}
                   className="text-red-500 focus:text-red-500"
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Delete
+                  <ContextMenuShortcut>⌫</ContextMenuShortcut>
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>

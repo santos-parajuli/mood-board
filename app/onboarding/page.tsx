@@ -47,6 +47,11 @@ import { VisualCropper } from "@/components/canvas/visualcropper"
 import { PillowSelector } from "@/components/pillowselector"
 import { OnboardingSlideshow } from "@/components/onboarding/onboardingslideshow"
 import { OnboardingProgress } from "@/components/onboarding/onboardingprogress"
+import {
+  autocropTransparentImage,
+  downscaleImageForApi,
+  removeWhiteBackground,
+} from "@/lib/utils/imageOptimizer"
 
 const steps = [
   { id: "basics", title: "Moodboard Basics" },
@@ -83,6 +88,7 @@ export default function SettingsOnboardingForm() {
     setFabricMaterial,
     setPattern,
     addCanvasImage,
+    updateCanvasImage,
     allPillowData,
   } = useMoodboardStore()
 
@@ -295,7 +301,7 @@ export default function SettingsOnboardingForm() {
     if (currentStep === 0)
       return formData.moodboardName.trim() !== "" && formData.region !== ""
     if (currentStep === 1) return formData.favoritePillows.length > 0
-    if (currentStep === 2) return formData.spaceImage !== null
+    if (currentStep === 2) return true // Reference image is optional!
     return true
   }
 
@@ -331,13 +337,13 @@ export default function SettingsOnboardingForm() {
           currentWidth: refImageSize,
           currentHeight: refImageSize,
           uploaded: true,
+          uploadedFromSubheader: true,
         },
         true
       )
     }
 
     // Insert favorite pillows in a non-overlapping grid to the right
-    // Use the same sizing logic as addImageToCanvas in canvas.tsx
     const PIXELS_PER_UNIT = 10
     const DEFAULT_SIZE = 100
     const pillowGap = 20
@@ -348,20 +354,28 @@ export default function SettingsOnboardingForm() {
       .map((pillowId) => allPillowData.find((p: any) => p.id === pillowId))
       .filter(Boolean)
 
-    let pillowStartX = startX + refImageSize + 30
+    // If reference image exists, start pillows to its right (360px). Otherwise start at 50px.
+    let pillowStartX = startX + (formData.imagePreview ? refImageSize + 30 : 0)
     let currentRowY = startY
     let currentCol = 0
     let currentRowMaxHeight = 0
 
     pillowEntries.forEach((pillowData: any, index: number) => {
-      if (!pillowData?.image_url) return
+      const transparentUrl =
+        pillowData.transparent_image_url ||
+        pillowData.transparentImageUrl ||
+        pillowData.transparent_url
+      const hasTransparentImage = Boolean(transparentUrl)
+      const imageSrc = transparentUrl || pillowData.image_url
+      if (!imageSrc) return
 
-      // Extract dimensions from pillow name (e.g. "18x18", "20x20")
+      // Extract dimensions from pillow name (e.g. "18x18", "20x20", "14x20")
       const match = (pillowData.name || "").match(/(\d+)x(\d+)/i)
       let pillowWidth: number
       let pillowHeight: number
 
       if (match) {
+        // Product naming: Height x Length (Width)
         pillowWidth = parseInt(match[2], 10) * PIXELS_PER_UNIT
         pillowHeight = parseInt(match[1], 10) * PIXELS_PER_UNIT
       } else {
@@ -381,11 +395,13 @@ export default function SettingsOnboardingForm() {
       currentRowMaxHeight = Math.max(currentRowMaxHeight, pillowHeight)
       currentCol++
 
+      const newId = `pillow-onboard-${Date.now()}-${index}`
+
       addCanvasImage(
         {
-          id: `pillow-onboard-${Date.now()}-${index}`,
-          src: pillowData.image_url,
-          originalSrc: pillowData.image_url,
+          id: newId,
+          src: imageSrc,
+          originalSrc: imageSrc,
           alt: pillowData.name || "Favorite Pillow",
           x,
           y,
@@ -398,17 +414,47 @@ export default function SettingsOnboardingForm() {
           pillowUrl: pillowData.pillow_url || "",
           withInsertID: pillowData.with_insert_id || null,
           withoutInsertID: pillowData.cover_only_id || null,
-          isProcessing: true,
+          isProcessing: true, // Show skeleton briefly while background autocrop / removebg completes
         },
         true
       )
+
+      // Exact pipeline matching canvas.tsx / gallery.tsx:
+      if (hasTransparentImage) {
+        // 1. Has transparent image -> ONLY autocrop transparent padding
+        autocropTransparentImage(imageSrc)
+          .then((croppedSrc) => {
+            updateCanvasImage(newId, {
+              src: croppedSrc,
+              dataUrl: croppedSrc,
+              isProcessing: false,
+            })
+          })
+          .catch(() => {
+            updateCanvasImage(newId, { isProcessing: false })
+          })
+      } else {
+        // 2. NO transparent image -> client-side background removal + autocrop
+        downscaleImageForApi(imageSrc, 500)
+          .then((optimizedSrc) => removeWhiteBackground(optimizedSrc))
+          .then((base64data) => autocropTransparentImage(base64data))
+          .then((trimmedDataUrl) => {
+            updateCanvasImage(newId, {
+              src: trimmedDataUrl,
+              dataUrl: trimmedDataUrl,
+              isProcessing: false,
+            })
+          })
+          .catch((err) => {
+            console.error("Failed to remove background for onboarding pillow:", err)
+            updateCanvasImage(newId, { isProcessing: false })
+          })
+      }
     })
 
-    setTimeout(() => {
-      toast.success("Settings workspace configured successfully!")
-      router.replace("/moodboard")
-      setIsSubmitting(false)
-    }, 1000)
+    toast.success("Settings workspace configured successfully!")
+    router.replace("/moodboard")
+    setIsSubmitting(false)
   }
 
   return (
@@ -665,7 +711,10 @@ export default function SettingsOnboardingForm() {
                     </>
                   ) : (
                     <>
-                      Complete Setup <Check className="h-4 w-4" />
+                      {formData.spaceImage
+                        ? "Complete Setup"
+                        : "Complete Setup (Skip Image)"}{" "}
+                      <Check className="h-4 w-4" />
                     </>
                   )}
                 </Button>

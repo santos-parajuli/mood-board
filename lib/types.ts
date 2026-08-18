@@ -100,6 +100,7 @@ export interface MoodboardState {
   createMoodboard: () => void
   deleteMoodboard: (id: string) => void
   duplicateMoodboard: (id: string) => void
+  setLoadedMoodboards: (moodboards: Moodboard[], activeId?: string) => void
 
   // Active Scoped Getters/Setters
   getMoodboardState: () => Moodboard | undefined
@@ -202,6 +203,8 @@ export interface DraggableImageProps {
   addToCart: (variantId: string) => void
   onResizeStop: (id: string | number, width: number, height: number) => void
   onCrop: (id: string | number) => void
+  onDuplicate: (id: string | number) => void
+  onResetSize: (id: string | number) => void
 }
 
 export interface DraggableTextProps {
