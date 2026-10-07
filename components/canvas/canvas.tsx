@@ -202,8 +202,6 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
     const extractDimensions = (title: string) => {
       const match = title.match(/(\d+)x(\d+)/i)
       if (match) {
-        // Product naming: Height x Length (Width)
-        // match[1] = Height, match[2] = Length / Width
         return {
           height: parseInt(match[1], 10),
           width: parseInt(match[2], 10),
@@ -212,7 +210,6 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
       return null
     }
 
-    // Calculate dimensions synchronously from title (no network load needed)
     let initialWidth: number
     let initialHeight: number
     const dimensions = extractDimensions(item.title || item.alt || "")
@@ -224,7 +221,6 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
       initialWidth = dimensions.width * PIXELS_PER_UNIT
       initialHeight = dimensions.height * PIXELS_PER_UNIT
     } else {
-      // Fallback default size for uploads without dimension info
       const defSize = item.uploadedFromSubheader
         ? 30 * PIXELS_PER_UNIT
         : DEFAULT_INITIAL_CANVAS_IMAGE_SIZE
@@ -247,13 +243,10 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
 
     const newId = Date.now()
 
-    // 1. Add image to canvas INSTANTLY (~< 20ms) — show skeleton while autocropping
     const newImage: CanvasImageItem = {
       id: newId,
       src: imageSrc,
       originalSrc: imageSrc,
-      // Persist the transparent cut-out source so export→import round-trips it,
-      // letting restore route pillows through autocrop-only (→ trimmed PNG).
       transparentImageUrl: transparentUrl || undefined,
       alt: item.title || item.alt || "Pillow Asset",
       x,
@@ -274,14 +267,11 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
     addCanvasImage(newImage, true)
     setSelectedItemIds([newId])
 
-    // If uploaded directly from subheader/user, do not remove background automatically.
-    // The user can click the "Remove BG" toolbar button at any time.
     if (item.uploadedFromSubheader) {
       updateCanvasImage(newId, { isProcessing: false })
       return
     }
 
-    // 2. Autocrop transparent padding in background (non-blocking, exports as lossless PNG)
     if (hasTransparentImage) {
       const runAutocrop = async () => {
         let croppedSrc = imageSrc
@@ -306,11 +296,8 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
     updateCanvasImage(id, { isProcessing: true }, true)
     try {
       const optimizedSrc = await downscaleImageForApi(src, 500)
-      // Client-side background removal — no server round-trip, no SSRF surface
       const base64data = await removeWhiteBackground(optimizedSrc)
-      // Solution 2A: Automatically crop transparent padding from background-removed image
       const trimmedDataUrl = await autocropTransparentImage(base64data)
-      // Final transparent image — commit to history
       updateCanvasImage(id, {
         src: trimmedDataUrl,
         dataUrl: trimmedDataUrl,
@@ -318,16 +305,15 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
       })
     } catch (error) {
       console.error("Failed to remove background:", error)
-      // Failed — still commit current state to history so the image is recorded
       updateCanvasImage(id, { isProcessing: false })
     }
   }
+
   useImperativeHandle(ref, () => ({
     addImageToCanvas,
     handleRemoveBackground,
   }))
 
-  // Sync resizingImageId — clear if the resizing item is no longer selected
   useEffect(() => {
     if (resizingImageId) {
       const isStillSelected = selectedItemIds.some(
@@ -357,7 +343,7 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
       }
     },
     [selectedItemIds, setSelectedItemIds]
-  ) // Dependencies
+  )
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (isTextMode) {
@@ -620,24 +606,36 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
       const files = Array.from(e.dataTransfer.files)
       const imageFiles = files.filter((file) => file.type.startsWith("image/"))
       for (const file of imageFiles) {
-        const reader = new FileReader()
-        reader.onload = (event) => {
-          const src = event.target?.result as string
-          if (src) {
-            addImageToCanvas(
-              {
-                src,
-                title: file.name,
-                uploadedFromSubheader: true,
-                customWidth: 30,
-                customHeight: 30,
-              },
-              { x: e.clientX, y: e.clientY }
-            )
-            toast.success(`Loaded dropped file: ${file.name}`)
-          }
+        // Create a temporary local URL to feed into the compressor
+        const objectUrl = URL.createObjectURL(file)
+        try {
+          const hasAlpha =
+            file.type === "image/png" || file.type === "image/webp"
+          // Enforce max 4000px and < 1MB
+          const compressedSrc = await downscaleImageForApi(
+            objectUrl,
+            4000,
+            hasAlpha
+          )
+
+          addImageToCanvas(
+            {
+              src: compressedSrc, // Use the compressed Data URI
+              title: file.name,
+              uploadedFromSubheader: true,
+              customWidth: 30,
+              customHeight: 30,
+            },
+            { x: e.clientX, y: e.clientY }
+          )
+          toast.success(`Loaded dropped file: ${file.name}`)
+        } catch (err) {
+          console.error("Failed to process dropped file:", err)
+          toast.error(`Failed to load dropped file: ${file.name}`)
+        } finally {
+          // Clean up memory
+          URL.revokeObjectURL(objectUrl)
         }
-        reader.readAsDataURL(file)
       }
       return
     }
@@ -721,7 +719,6 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
         (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")
       if (isEditingText) return
 
-      // Undo / Redo keyboard shortcuts
       if (e.metaKey || e.ctrlKey) {
         if (e.key.toLowerCase() === "z") {
           e.preventDefault()
@@ -761,7 +758,6 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
           return
         }
 
-        // ⌘D: Duplicate selected items
         if (e.key.toLowerCase() === "d") {
           e.preventDefault()
           handleDuplicate()
@@ -782,7 +778,6 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
               images: JSON.parse(JSON.stringify(selectedImages)),
               texts: JSON.parse(JSON.stringify(selectedTexts)),
             }
-            // Write a tag to the system clipboard
             navigator.clipboard.writeText("__canvas_copy__").catch((err) => {
               console.warn("Failed to write to system clipboard:", err)
             })
@@ -892,7 +887,6 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
         return
       }
 
-      // 1. If the clipboard data contains our specific canvas tag, paste internal items
       const isCanvasPaste =
         e.clipboardData?.getData("text/plain") === "__canvas_copy__"
       if (
@@ -947,7 +941,6 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
         return
       }
 
-      // 2. Otherwise fallback to system file/URL pastes
       const items = e.clipboardData?.items
       if (!items) return
 
@@ -955,21 +948,32 @@ const Canvas = forwardRef<CanvasRefActions, {}>((props, ref) => {
         if (item.type.startsWith("image/")) {
           const file = item.getAsFile()
           if (file) {
-            const reader = new FileReader()
-            reader.onload = (event) => {
-              const src = event.target?.result as string
-              if (src) {
-                addImageToCanvas({
-                  src,
-                  title: "Pasted Image",
-                  uploadedFromSubheader: true,
-                  customWidth: 30,
-                  customHeight: 30,
-                })
-                toast.success("Image pasted to canvas!")
-              }
+            // Replace FileReader with Compression Pipeline
+            const objectUrl = URL.createObjectURL(file)
+            try {
+              const hasAlpha =
+                file.type === "image/png" || file.type === "image/webp"
+              // Enforce max 4000px and < 1MB
+              const compressedSrc = await downscaleImageForApi(
+                objectUrl,
+                4000,
+                hasAlpha
+              )
+
+              addImageToCanvas({
+                src: compressedSrc, // Use the compressed Data URI
+                title: "Pasted Image",
+                uploadedFromSubheader: true,
+                customWidth: 30,
+                customHeight: 30,
+              })
+              toast.success("Image pasted to canvas!")
+            } catch (err) {
+              console.error("Failed to process pasted file:", err)
+              toast.error("Failed to paste image")
+            } finally {
+              URL.revokeObjectURL(objectUrl)
             }
-            reader.readAsDataURL(file)
           }
           e.preventDefault()
           return

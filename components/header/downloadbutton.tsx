@@ -8,7 +8,6 @@ import useMoodboardStore from "@/lib/store/moodboardstore"
 import {
   CanvasImageItem,
   CanvasTextItem,
-  HighQualityImageResult,
   SocialMediaPlatform,
 } from "@/lib/types"
 
@@ -17,88 +16,25 @@ const DownloadButton = () => {
   const activeMoodboard = getMoodboardState()
   const [isDownloading, setIsDownloading] = useState<boolean>(false)
 
-  // Calculate quality & scale dynamically based on image dimensions
-  const getAdaptiveImageSettings = (width: number, height: number) => {
-    const maxDim = Math.max(width, height)
-    // 2x scale capped at 1200px max raster dimension provides crisp 300 DPI print quality without bloated file sizes
-    const scaleFactor = Math.min(2, Math.max(1, 1200 / Math.max(1, maxDim)))
-    return { scaleFactor, jpegQuality: 0.88 }
+  // Helper to fetch image URL and convert to Data URI without any size optimization
+  const fetchAsDataUrl = async (url: string): Promise<string> => {
+    if (url.startsWith("data:")) return url
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+    } catch (e) {
+      console.error("Failed to fetch URL as Data URL", url, e)
+      return url // Fallback to URL if fetch fails
+    }
   }
 
-  // Adaptive data URL processing for main images (PNG for transparency, JPEG for photos)
-  const toAdaptiveDataUrl = async (
-    url: string
-  ): Promise<HighQualityImageResult> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image()
-      img.crossOrigin = "anonymous"
-      img.onload = () => {
-        const { scaleFactor, jpegQuality } = getAdaptiveImageSettings(
-          img.naturalWidth,
-          img.naturalHeight
-        )
-
-        const canvas = document.createElement("canvas")
-        canvas.width = Math.round(img.naturalWidth * scaleFactor)
-        canvas.height = Math.round(img.naturalHeight * scaleFactor)
-        const ctx = canvas.getContext("2d")
-
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true
-          ctx.imageSmoothingQuality = "high"
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        }
-
-        const isTransparent =
-          url.endsWith(".png") ||
-          url.endsWith(".webp") ||
-          url.includes("transparent") ||
-          url.startsWith("data:image/png") ||
-          url.startsWith("data:image/webp")
-
-        resolve({
-          dataUrl: canvas.toDataURL(
-            isTransparent ? "image/png" : "image/jpeg",
-            jpegQuality
-          ),
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-        })
-      }
-      img.onerror = reject
-      img.src = url
-    })
-  }
-
-  // PNG variant — preserves full fidelity and transparency for logos & UI icons
-  const toHighQualityPngDataUrl = async (
-    url: string
-  ): Promise<HighQualityImageResult> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image()
-      img.crossOrigin = "anonymous"
-      img.onload = () => {
-        const QUALITY_SCALE_FACTOR = 2
-        const canvas = document.createElement("canvas")
-        canvas.width = img.naturalWidth * QUALITY_SCALE_FACTOR
-        canvas.height = img.naturalHeight * QUALITY_SCALE_FACTOR
-        const ctx = canvas.getContext("2d")
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true
-          ctx.imageSmoothingQuality = "high"
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-        }
-        resolve({
-          dataUrl: canvas.toDataURL("image/png"),
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-        })
-      }
-      img.onerror = reject
-      img.src = url
-    })
-  }
-
+  // Add image to PDF directly at exact coordinates with object-cover cropping, without compression
   const addImageWithCover = async (
     pdf: jsPDF,
     imgData: string,
@@ -109,90 +45,104 @@ const DownloadButton = () => {
     forceFormat?: "PNG" | "JPEG",
     uploadedFromSubheader?: boolean
   ): Promise<void> => {
-    const sourceMayHaveAlpha =
-      imgData.startsWith("data:image/webp") ||
-      imgData.startsWith("data:image/png") ||
-      imgData.includes("transparent") ||
-      imgData.endsWith(".png") ||
-      imgData.endsWith(".webp")
+    // If it's still a URL (rare fallback), fetch it as Data URL
+    if (!imgData.startsWith("data:")) {
+      imgData = await fetchAsDataUrl(imgData)
+    }
 
     return new Promise((resolve) => {
       const img = new Image()
       img.onload = () => {
-        // Size raster canvas to 2x the target point dimensions (crisp retina / print 300 DPI)
-        const rasterScale = 2
+        // Use a high scale factor to maintain crisp print resolution (300DPI equivalent)
+        const rasterScale = 4.16
         const canvas = document.createElement("canvas")
         canvas.width = Math.round(targetWidth * rasterScale)
         canvas.height = Math.round(targetHeight * rasterScale)
         const ctx = canvas.getContext("2d")
 
-        if (ctx) {
-          ctx.imageSmoothingEnabled = true
-          ctx.imageSmoothingQuality = "high"
-
-          if (!uploadedFromSubheader) {
-            // object-contain
-            const imgAspect = img.naturalWidth / img.naturalHeight
-            const targetAspect = targetWidth / targetHeight
-            let drawW = canvas.width
-            let drawH = canvas.height
-            let drawX = 0
-            let drawY = 0
-
-            if (imgAspect > targetAspect) {
-              drawH = canvas.width / imgAspect
-              drawY = (canvas.height - drawH) / 2
-            } else {
-              drawW = canvas.height * imgAspect
-              drawX = (canvas.width - drawW) / 2
-            }
-            ctx.drawImage(img, drawX, drawY, drawW, drawH)
-          } else {
-            // object-cover
-            const imgAspect = img.naturalWidth / img.naturalHeight
-            const targetAspect = targetWidth / targetHeight
-            let sourceX = 0,
-              sourceY = 0,
-              sourceWidth = img.naturalWidth,
-              sourceHeight = img.naturalHeight
-
-            if (imgAspect > targetAspect) {
-              sourceWidth = sourceHeight * targetAspect
-              sourceX = (img.naturalWidth - sourceWidth) / 2
-            } else {
-              sourceHeight = sourceWidth / targetAspect
-              sourceY = (img.naturalHeight - sourceHeight) / 2
-            }
-
-            ctx.drawImage(
-              img,
-              sourceX,
-              sourceY,
-              sourceWidth,
-              sourceHeight,
-              0,
-              0,
-              canvas.width,
-              canvas.height
-            )
-          }
+        if (!ctx) {
+          resolve()
+          return
         }
 
-        const outputFormat =
-          forceFormat ?? (sourceMayHaveAlpha ? "PNG" : "JPEG")
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = "high"
 
-        pdf.addImage(
-          outputFormat === "PNG"
+        if (!uploadedFromSubheader) {
+          // object-contain (for product images)
+          const imgAspect = img.naturalWidth / img.naturalHeight
+          const targetAspect = targetWidth / targetHeight
+          let drawW = canvas.width
+          let drawH = canvas.height
+          let drawX = 0
+          let drawY = 0
+
+          if (imgAspect > targetAspect) {
+            drawH = canvas.width / imgAspect
+            drawY = (canvas.height - drawH) / 2
+          } else {
+            drawW = canvas.height * imgAspect
+            drawX = (canvas.width - drawW) / 2
+          }
+          ctx.drawImage(img, drawX, drawY, drawW, drawH)
+        } else {
+          // object-cover (for uploaded user images)
+          const imgAspect = img.naturalWidth / img.naturalHeight
+          const targetAspect = targetWidth / targetHeight
+          let sourceX = 0,
+            sourceY = 0,
+            sourceWidth = img.naturalWidth,
+            sourceHeight = img.naturalHeight
+
+          if (imgAspect > targetAspect) {
+            sourceWidth = sourceHeight * targetAspect
+            sourceX = (img.naturalWidth - sourceWidth) / 2
+          } else {
+            sourceHeight = sourceWidth / targetAspect
+            sourceY = (img.naturalHeight - sourceHeight) / 2
+          }
+
+          ctx.drawImage(
+            img,
+            sourceX,
+            sourceY,
+            sourceWidth,
+            sourceHeight,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+          )
+        }
+
+        let format = forceFormat
+        if (!format) {
+          if (imgData.startsWith("data:image/png")) format = "PNG"
+          else if (imgData.startsWith("data:image/jpeg")) format = "JPEG"
+          else if (imgData.startsWith("data:image/webp")) format = "PNG"
+          else format = "JPEG"
+        }
+
+        // Export at 1.0 (100%) quality to ensure NO compression is applied
+        const finalDataUrl =
+          format === "PNG"
             ? canvas.toDataURL("image/png")
-            : canvas.toDataURL("image/jpeg", 0.88),
-          outputFormat,
-          x,
-          y,
-          targetWidth,
-          targetHeight,
-          undefined,
-          "FAST"
-        )
+            : canvas.toDataURL("image/jpeg", 1.0)
+
+        try {
+          pdf.addImage(
+            finalDataUrl,
+            format,
+            x,
+            y,
+            targetWidth,
+            targetHeight,
+            undefined,
+            "FAST"
+          )
+        } catch (e) {
+          console.error("Failed to add image directly to PDF", e)
+        }
         resolve()
       }
       img.onerror = () => resolve() // Defensive fallback: skip failed image
@@ -231,8 +181,8 @@ const DownloadButton = () => {
         const canvasTopPadding = headerHeight + padding
         const canvasBottomPadding = pdfHeight - 60 - padding
 
-        // Load footer logo once
-        const logoData = await toHighQualityPngDataUrl("/toniclogo.png")
+        // Load footer logo once (as pure Data URI)
+        const logoData = await fetchAsDataUrl("/toniclogo.png")
 
         for (let index = 0; index < moodboards.length; index++) {
           const moodboard = moodboards[index]
@@ -257,14 +207,13 @@ const DownloadButton = () => {
                 if (img.dataUrl) {
                   return img
                 }
-                const { dataUrl, width, height } = await toAdaptiveDataUrl(
-                  img.originalSrc || img.src
-                )
+                // Fetch as Data URI without applying any compression
+                const dataUrl = await fetchAsDataUrl(img.originalSrc || img.src)
                 return {
                   ...img,
                   dataUrl,
-                  naturalWidth: width,
-                  naturalHeight: height,
+                  naturalWidth: img.baseWidth,
+                  naturalHeight: img.baseHeight,
                 }
               } catch (e) {
                 console.warn(`Failed to process image: ${img.src}`, e)
@@ -453,7 +402,7 @@ const DownloadButton = () => {
           try {
             await addImageWithCover(
               pdf,
-              logoData.dataUrl,
+              logoData,
               padding,
               footerY,
               logoWidth,
@@ -502,10 +451,10 @@ const DownloadButton = () => {
 
           for (const platform of socialMedia) {
             try {
-              const iconData = await toHighQualityPngDataUrl(platform.icon)
+              const iconData = await fetchAsDataUrl(platform.icon)
               await addImageWithCover(
                 pdf,
-                iconData.dataUrl,
+                iconData,
                 socialX,
                 footerY + 5,
                 socialSize,
@@ -525,22 +474,38 @@ const DownloadButton = () => {
         const cleanedMoodboards = moodboards.map((board) => ({
           ...board,
           canvasImages: (board.canvasImages || []).map((img) => {
-            const { dataUrl, ...rest } = img
+            // Strip both dataUrl and originalSrc out of the rest object
+            const { dataUrl, originalSrc, ...rest } = img
             const isLocalDataUrl =
               typeof img.src === "string" && img.src.startsWith("data:")
-            const remoteSource =
-              img.transparentImageUrl || img.originalSrc || (!isLocalDataUrl ? img.src : "")
-            const finalSrc = remoteSource || (isLocalDataUrl ? img.src : "") || ""
 
-            return {
+            // Find the best source to use
+            const remoteSource =
+              img.transparentImageUrl ||
+              originalSrc ||
+              (!isLocalDataUrl ? img.src : "")
+            const finalSrc =
+              remoteSource || (isLocalDataUrl ? img.src : "") || ""
+
+            const cleanedImg: any = {
               ...rest,
               src: finalSrc,
-              originalSrc: finalSrc,
-              transparentImageUrl: img.transparentImageUrl,
             }
+
+            // ONLY keep originalSrc if it is meaningfully different from src
+            if (originalSrc && originalSrc !== finalSrc) {
+              cleanedImg.originalSrc = originalSrc
+            }
+
+            if (img.transparentImageUrl) {
+              cleanedImg.transparentImageUrl = img.transparentImageUrl
+            }
+
+            return cleanedImg
           }),
         }))
         const metadata = { moodboards: cleanedMoodboards, name, region }
+        console.log("PDF Metadata:", metadata)
 
         pdf.addMetadata(JSON.stringify(metadata), "jspdf:metadata")
         pdf.save(`${name || "moodboard"}.pdf`)

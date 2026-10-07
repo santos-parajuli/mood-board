@@ -5,17 +5,92 @@ import { Mode } from "@/lib/types"
  * 1A: Downscales high-res images before background/transparency processing.
  * 2A: Automatically crops empty transparent padding around cutout images.
  * 3A: Removes white backgrounds client-side (replaces the old /api/removebg route).
+ *
+ * REFACTOR NOTES:
+ * - NO BLOBS: All functions return base64 Data URIs exclusively.
+ * - MAX PIXELS: Strictly capped at 4000x4000.
+ * - MAX SIZE: Strictly enforced under 1MB (~1,000,000 base64 characters).
  */
 
+const MAX_DIM = 4000
+const MAX_BYTES = 1000000
+
 /**
- * 1A: Downscales an image client-side to max dimensions (default 800px) and compresses it.
- * Significantly cuts server bandwidth and API processing time.
+ * Core Helper: Enforces 4000px max dimension and < 1MB file size.
+ * Returns a base64 Data URI. Never returns a Blob.
+ */
+function exportCompressedDataURL(
+  canvas: HTMLCanvasElement,
+  hasAlpha: boolean
+): string {
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return ""
+
+  let width = canvas.width
+  let height = canvas.height
+
+  // Helper to scale down the canvas in-place
+  const scaleCanvas = (scale: number) => {
+    const newW = Math.max(1, Math.round(width * scale))
+    const newH = Math.max(1, Math.round(height * scale))
+    const tmpCanvas = document.createElement("canvas")
+    tmpCanvas.width = newW
+    tmpCanvas.height = newH
+    const tmpCtx = tmpCanvas.getContext("2d")
+    if (!tmpCtx) return
+
+    tmpCtx.drawImage(canvas, 0, 0, newW, newH)
+
+    width = newW
+    height = newH
+    canvas.width = newW
+    canvas.height = newH
+    ctx.drawImage(tmpCanvas, 0, 0)
+  }
+
+  // 1. Enforce max dimension (4000px)
+  if (width > MAX_DIM || height > MAX_DIM) {
+    const scale = Math.min(MAX_DIM / width, MAX_DIM / height)
+    scaleCanvas(scale)
+  }
+
+  // 2. Enforce max file size (< 1MB)
+  if (hasAlpha) {
+    // PNG: We can't adjust quality, so we must scale down dimensions to reduce size
+    let dataUrl = canvas.toDataURL("image/png")
+    while (dataUrl.length > MAX_BYTES && width > 100 && height > 100) {
+      scaleCanvas(0.8)
+      dataUrl = canvas.toDataURL("image/png")
+    }
+    return dataUrl
+  } else {
+    // JPEG: We can lower quality first, then scale dimensions if still too large
+    let quality = 0.85
+    let dataUrl = canvas.toDataURL("image/jpeg", quality)
+
+    while (dataUrl.length > MAX_BYTES && quality > 0.1) {
+      quality -= 0.1
+      dataUrl = canvas.toDataURL("image/jpeg", quality)
+    }
+
+    while (dataUrl.length > MAX_BYTES && width > 100 && height > 100) {
+      scaleCanvas(0.8)
+      dataUrl = canvas.toDataURL("image/jpeg", 0.5) // Hard compress
+    }
+
+    return dataUrl
+  }
+}
+
+/**
+ * 1A: Downscales an image client-side and compresses it.
  */
 export async function downscaleImageForApi(
   imageUrl: string,
-  maxDimension: number = 800
+  maxDimension: number = MAX_DIM,
+  hasAlpha: boolean = false
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = () => {
@@ -43,13 +118,13 @@ export async function downscaleImageForApi(
       }
 
       ctx.drawImage(img, 0, 0, width, height)
-      // Export as compressed JPEG to keep payload small (~100KB)
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85)
-      resolve(dataUrl)
+
+      // Pass hasAlpha to the exporter
+      const compressedDataUrl = exportCompressedDataURL(canvas, hasAlpha)
+      resolve(compressedDataUrl)
     }
 
     img.onerror = () => {
-      // Fallback to original URL if CORS or load fails
       resolve(imageUrl)
     }
 
@@ -59,12 +134,11 @@ export async function downscaleImageForApi(
 
 /**
  * 2A: Automatically trims/crops transparent padding around a PNG image.
- * Optimized: Downscales FIRST to reduce pixel loop size, and yields to UI.
  */
 export async function autocropTransparentImage(
   imageUrl: string,
   padding: number = 8,
-  maxDimension: number = 1000
+  maxDimension: number = MAX_DIM
 ): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image()
@@ -73,10 +147,8 @@ export async function autocropTransparentImage(
       let width = img.naturalWidth
       let height = img.naturalHeight
 
-      // 1. YIELD TO UI: Let React paint the "Processing" skeleton before we freeze the thread
       await new Promise((r) => setTimeout(r, 0))
 
-      // 2. PRE-DOWNSCALE: Shrink the image BEFORE scanning pixels to reduce loop size by ~80%
       if (width > maxDimension || height > maxDimension) {
         if (width > height) {
           height = Math.round((height * maxDimension) / width)
@@ -97,7 +169,6 @@ export async function autocropTransparentImage(
         return
       }
 
-      // Draw the downscaled image
       ctx.drawImage(img, 0, 0, width, height)
 
       try {
@@ -110,8 +181,6 @@ export async function autocropTransparentImage(
         let maxY = 0
         let foundPixel = false
 
-        // Scan pixels for non-transparent alpha values (> 15)
-        // This loop is now running on a much smaller image array
         for (let y = 0; y < height; y++) {
           for (let x = 0; x < width; x++) {
             const alphaIndex = (y * width + x) * 4 + 3
@@ -125,7 +194,6 @@ export async function autocropTransparentImage(
           }
         }
 
-        // If no solid pixels found or crop bounds match full size, return downscaled image
         if (
           !foundPixel ||
           (minX === 0 &&
@@ -133,11 +201,11 @@ export async function autocropTransparentImage(
             maxX === width - 1 &&
             maxY === height - 1)
         ) {
-          resolve(canvas.toDataURL("image/png"))
+          // Export as transparent PNG < 1MB
+          resolve(exportCompressedDataURL(canvas, true))
           return
         }
 
-        // Add optional small padding around subject
         minX = Math.max(0, minX - padding)
         minY = Math.max(0, minY - padding)
         maxX = Math.min(width - 1, maxX + padding)
@@ -159,7 +227,7 @@ export async function autocropTransparentImage(
         cropCtx.imageSmoothingEnabled = true
         cropCtx.imageSmoothingQuality = "high"
         cropCtx.drawImage(
-          canvas, // Draw from the downscaled canvas, not the original huge image
+          canvas,
           minX,
           minY,
           croppedWidth,
@@ -170,11 +238,10 @@ export async function autocropTransparentImage(
           croppedHeight
         )
 
-        // Export as lossless PNG to preserve transparent alpha channels
-        const outputDataUrl = cropCanvas.toDataURL("image/png")
+        // Export as transparent PNG < 1MB
+        const outputDataUrl = exportCompressedDataURL(cropCanvas, true)
         resolve(outputDataUrl)
       } catch (err) {
-        // If canvas is tainted (CORS), return original URL gracefully
         console.warn(
           "Autocrop skipped due to canvas security restriction:",
           err
@@ -193,11 +260,6 @@ export async function autocropTransparentImage(
 
 /**
  * 3A: Removes white/light backgrounds client-side and returns a transparent PNG.
- * Mirrors the old /api/removebg endpoint (same auto-threshold algorithm) but runs
- * entirely in the browser via Canvas 2D — no server round-trip, no SSRF surface.
- *
- * The returned image keeps its original dimensions; callers should follow up
- * with autocropTransparentImage() to trim any surrounding transparent padding.
  */
 export async function removeWhiteBackground(
   imageUrl: string,
@@ -207,11 +269,17 @@ export async function removeWhiteBackground(
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = async () => {
-      // YIELD TO UI: Let React paint the "Processing" skeleton before we freeze the thread
       await new Promise((r) => setTimeout(r, 0))
 
-      const width = img.naturalWidth
-      const height = img.naturalHeight
+      let width = img.naturalWidth
+      let height = img.naturalHeight
+
+      // Enforce strict 4000px limit BEFORE heavy pixel manipulation
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const scale = Math.min(MAX_DIM / width, MAX_DIM / height)
+        width = Math.round(width * scale)
+        height = Math.round(height * scale)
+      }
 
       const canvas = document.createElement("canvas")
       canvas.width = width
@@ -223,13 +291,12 @@ export async function removeWhiteBackground(
         return
       }
 
-      ctx.drawImage(img, 0, 0)
+      ctx.drawImage(img, 0, 0, width, height)
 
       try {
         const imageData = ctx.getImageData(0, 0, width, height)
         const data = imageData.data
 
-        // Step 1: Determine a dynamic threshold for white removal
         let threshold = 250
         if (mode === "auto") {
           let totalBrightness = 0
@@ -256,22 +323,20 @@ export async function removeWhiteBackground(
                     : 210
         }
 
-        // Step 2: Make white pixels transparent based on the threshold
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i]
           const g = data[i + 1]
           const b = data[i + 2]
           if (r >= threshold && g >= threshold && b >= threshold) {
-            data[i + 3] = 0 // Set alpha to 0 (transparent)
+            data[i + 3] = 0
           }
         }
 
         ctx.putImageData(imageData, 0, 0)
 
-        // Export as lossless PNG to preserve transparent alpha channels
-        resolve(canvas.toDataURL("image/png"))
+        // Export as transparent PNG < 1MB
+        resolve(exportCompressedDataURL(canvas, true))
       } catch (err) {
-        // If canvas is tainted (CORS) or getImageData fails, fall back gracefully
         console.warn(
           "removeWhiteBackground skipped due to canvas security restriction:",
           err

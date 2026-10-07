@@ -29,11 +29,7 @@ import useCanvasStore from "@/lib/store/canvasStore"
 import DeleteMoodboardDialog from "./deletemoodboarddialog"
 
 import { CanvasImageItem } from "@/lib/types"
-import {
-  autocropTransparentImage,
-  downscaleImageForApi,
-  removeWhiteBackground,
-} from "@/lib/utils/imageOptimizer"
+import { autocropTransparentImage } from "@/lib/utils/imageOptimizer"
 
 const Settings = () => {
   const {
@@ -127,7 +123,10 @@ const Settings = () => {
         if (loadedState.name) setName(loadedState.name)
         if (loadedState.region) setRegion(loadedState.region)
 
-        if (Array.isArray(loadedState.moodboards) && loadedState.moodboards.length > 0) {
+        if (
+          Array.isArray(loadedState.moodboards) &&
+          loadedState.moodboards.length > 0
+        ) {
           const restoredMoodboards = loadedState.moodboards.map(
             (moodboard: any, i: number) => {
               const newMoodboardId =
@@ -293,41 +292,51 @@ const Settings = () => {
           </SheetHeader>
           <div className="grid flex-1 auto-rows-min gap-6 px-4 py-4">
             <div className="grid gap-3">
-              <Label className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Moodboards (Slides)</Label>
-              
+              <Label className="text-sm font-semibold tracking-wider text-gray-500 uppercase">
+                Moodboards (Slides)
+              </Label>
+
               {/* PPT-style vertical list of slides */}
-              <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1 border rounded-md p-2 bg-gray-50">
+              <div className="flex max-h-75 flex-col gap-2 overflow-y-auto rounded-md border bg-gray-50 p-2 pr-1">
                 {moodboards.map((mb, index) => {
-                  const isActive = mb.id === activeMoodboardId;
-                  const imgCount = mb.canvasImages?.length || 0;
-                  const textCount = mb.canvasTexts?.length || 0;
+                  const isActive = mb.id === activeMoodboardId
+                  const imgCount = mb.canvasImages?.length || 0
+                  const textCount = mb.canvasTexts?.length || 0
 
                   return (
                     <div
                       key={mb.id}
                       onClick={() => selectMoodboard(mb.id)}
-                      className={`group relative flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all duration-200 ${
+                      className={`group relative flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-all duration-200 ${
                         isActive
-                          ? "bg-white border-blue-500 shadow-sm ring-1 ring-blue-500/20"
-                          : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                          ? "border-blue-500 bg-white shadow-sm ring-1 ring-blue-500/20"
+                          : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
                       }`}
                     >
                       {/* Slide number */}
-                      <span className={`text-xs font-mono font-medium ${isActive ? "text-blue-600" : "text-gray-400"}`}>
+                      <span
+                        className={`font-mono text-xs font-medium ${isActive ? "text-blue-600" : "text-gray-400"}`}
+                      >
                         {String(index + 1).padStart(2, "0")}
                       </span>
 
                       {/* Mock slide preview box */}
-                      <div className={`w-16 h-10 rounded border flex items-center justify-center text-[10px] ${isActive ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-gray-100 border-gray-200 text-gray-500"}`}>
+                      <div
+                        className={`flex h-10 w-16 items-center justify-center rounded border text-[10px] ${isActive ? "border-blue-200 bg-blue-50 text-blue-700" : "border-gray-200 bg-gray-100 text-gray-500"}`}
+                      >
                         <div className="text-center leading-none">
                           <div className="font-semibold">{imgCount} Img</div>
-                          <div className="text-[8px] mt-0.5">{textCount} Text</div>
+                          <div className="mt-0.5 text-[8px]">
+                            {textCount} Text
+                          </div>
                         </div>
                       </div>
 
                       {/* Slide title / info */}
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${isActive ? "text-gray-900" : "text-gray-700"}`}>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={`truncate text-sm font-medium ${isActive ? "text-gray-900" : "text-gray-700"}`}
+                        >
                           {name} - {index + 1}
                         </p>
                       </div>
@@ -336,31 +345,31 @@ const Settings = () => {
                       {moodboards.length > 1 && (
                         <button
                           onClick={(e) => {
-                            e.stopPropagation();
+                            e.stopPropagation()
                             if (mb.id === activeMoodboardId) {
-                              handleDeleteMoodboardClick();
+                              handleDeleteMoodboardClick()
                             } else {
-                              deleteMoodboard(mb.id);
-                              toast.success("Moodboard deleted!");
+                              deleteMoodboard(mb.id)
+                              toast.success("Moodboard deleted!")
                             }
                           }}
-                          className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-600 text-gray-400 rounded transition-opacity"
+                          className="rounded p-1 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-600"
                           title="Delete Slide"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
                       )}
                     </div>
-                  );
+                  )
                 })}
               </div>
 
               {/* Actions box for creating and copying */}
-              <div className="grid grid-cols-2 gap-2 p-3 bg-gray-100/50 rounded-lg border border-gray-200">
+              <div className="grid grid-cols-2 gap-2 rounded-lg border border-gray-200 bg-gray-100/50 p-3">
                 <Button
                   onClick={handleCreateMoodboard}
                   variant="outline"
-                  className="bg-white flex items-center justify-center gap-1.5 text-xs h-9"
+                  className="flex h-9 items-center justify-center gap-1.5 bg-white text-xs"
                 >
                   <PlusCircle className="h-4 w-4 text-emerald-600" />
                   New Slide
@@ -368,7 +377,7 @@ const Settings = () => {
                 <Button
                   onClick={handleDuplicateMoodboard}
                   variant="outline"
-                  className="bg-white flex items-center justify-center gap-1.5 text-xs h-9"
+                  className="flex h-9 items-center justify-center gap-1.5 bg-white text-xs"
                 >
                   <Copy className="h-4 w-4 text-blue-600" />
                   Copy Active

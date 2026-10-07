@@ -1,9 +1,180 @@
+"use client"
+
+import React, { useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import useMoodboardStore from "@/lib/store/moodboardstore"
+import { autocropTransparentImage } from "@/lib/utils/imageOptimizer"
 
 export default function HomePage() {
+  const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const { setName, setRegion, setLoadedMoodboards, updateCanvasImage } =
+    useMoodboardStore()
+
+  const loadMoodboard = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      try {
+        let loadedState: any
+        const result = e.target?.result
+        if (!result) return
+
+        if (file.type === "application/pdf") {
+          const pdfjsLib = require("pdfjs-dist")
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+          const pdfData = new Uint8Array(result as ArrayBuffer)
+          const loadingTask = pdfjsLib.getDocument({ data: pdfData })
+          const pdfDoc = await loadingTask.promise
+          const metadata = await pdfDoc.getMetadata()
+          const compressedMetadata =
+            metadata.info.moodboardData ||
+            metadata.metadata?.get("jspdf:metadata")
+
+          if (!compressedMetadata) {
+            toast.error("PDF does not contain moodboard data.")
+            return
+          }
+          loadedState = JSON.parse(compressedMetadata)
+        } else if (file.type === "application/json") {
+          loadedState = JSON.parse(result as string)
+        } else {
+          toast.error("Unsupported file type. Please load a JSON or PDF file.")
+          return
+        }
+
+        if (loadedState.name) setName(loadedState.name)
+        if (loadedState.region) setRegion(loadedState.region)
+
+        if (
+          Array.isArray(loadedState.moodboards) &&
+          loadedState.moodboards.length > 0
+        ) {
+          const restoredMoodboards = loadedState.moodboards.map(
+            (moodboard: any, i: number) => {
+              const newMoodboardId =
+                moodboard.id ||
+                `moodboard-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`
+
+              const restoredImages = (moodboard.canvasImages || []).map(
+                (img: any) => {
+                  const transparentUrl =
+                    img.transparentImageUrl ||
+                    img.transparent_image_url ||
+                    img.transparent_url
+                  const hasTransparentImage = Boolean(transparentUrl)
+                  const persistedDataUrl =
+                    typeof img.src === "string" && img.src.startsWith("data:")
+                      ? img.src
+                      : typeof img.dataUrl === "string" &&
+                          img.dataUrl.startsWith("data:")
+                        ? img.dataUrl
+                        : null
+                  const imageSrc =
+                    persistedDataUrl ||
+                    transparentUrl ||
+                    img.src ||
+                    img.originalSrc ||
+                    ""
+
+                  return {
+                    ...img,
+                    src: imageSrc,
+                    originalSrc: imageSrc,
+                    isProcessing: false,
+                  }
+                }
+              )
+
+              const restoredTexts = (moodboard.canvasTexts || []).map(
+                (txt: any) => ({
+                  ...txt,
+                })
+              )
+
+              return {
+                id: newMoodboardId,
+                name:
+                  moodboard.name ||
+                  `${loadedState.name || "Moodboard"} - ${i + 1}`,
+                canvasImages: restoredImages,
+                canvasTexts: restoredTexts,
+                selectedGalleryItems: moodboard.selectedGalleryItems || [],
+                selectedComboboxItem: moodboard.selectedComboboxItem || "",
+              }
+            }
+          )
+
+          // Replace moodboards in store completely
+          setLoadedMoodboards(restoredMoodboards, restoredMoodboards[0]?.id)
+
+          // Background auto-crop if needed
+          restoredMoodboards.forEach((mb: any) => {
+            ;(mb.canvasImages || []).forEach((img: any) => {
+              const transparentUrl =
+                img.transparentImageUrl ||
+                img.transparent_image_url ||
+                img.transparent_url
+              if (
+                transparentUrl &&
+                (!img.src || !img.src.startsWith("data:"))
+              ) {
+                autocropTransparentImage(transparentUrl)
+                  .then((croppedSrc) => {
+                    updateCanvasImage(img.id, {
+                      src: croppedSrc,
+                      dataUrl: croppedSrc,
+                      isProcessing: false,
+                    })
+                  })
+                  .catch(() => {
+                    updateCanvasImage(img.id, { isProcessing: false })
+                  })
+              }
+            })
+          })
+
+          toast.success("Moodboard state loaded successfully!")
+          // Redirect to the moodboard studio to view the loaded file
+          router.push("/moodboard")
+        } else {
+          toast.error("No moodboards found in the file.")
+        }
+      } catch (error) {
+        console.error("Error parsing file:", error)
+        toast.error("Failed to load moodboard state. Invalid file.")
+      }
+    }
+
+    if (file.type === "application/pdf") {
+      reader.readAsArrayBuffer(file)
+    } else {
+      reader.readAsText(file)
+    }
+
+    // Reset input so the same file can be selected again
+    if (event.target) {
+      event.target.value = ""
+    }
+  }
+
   return (
     <div className="min-h-screen bg-stone-50 font-sans text-stone-800 antialiased">
+      {/* Hidden file input for loading moodboards */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={loadMoodboard}
+        className="hidden"
+        accept=".json,.pdf"
+      />
+
       {/* Navigation */}
       <header className="sticky top-0 z-50 border-b border-stone-200 bg-white/80 px-6 py-4 backdrop-blur-md">
         <div className="mx-auto flex max-w-[80%] items-center justify-between">
@@ -58,12 +229,14 @@ export default function HomePage() {
             >
               Start Your Moodboard
             </Link>
-            <a
-              href="#features"
+
+            {/* Replaced "See How It Works" with Load Moodboard trigger */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
               className="w-full rounded-xl border border-stone-300 bg-white px-8 py-4 text-center text-lg font-medium text-stone-800 transition hover:bg-stone-100 sm:w-auto"
             >
-              See How It Works
-            </a>
+              Load Moodboard
+            </button>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useRef } from "react"
+import React, { useState, useRef, useCallback } from "react"
 import { PillowSelector } from "../pillowselector"
 import { ProductFilter } from "../productfilter"
 import useMoodboardStore from "@/lib/store/moodboardstore"
@@ -54,7 +54,7 @@ function ToolbarButton({
       onClick={onClick}
       disabled={disabled}
       title={title || label}
-      className={`flex min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-md px-2.5 py-1 transition-all duration-150 ${
+      className={`flex min-w-11 flex-col items-center justify-center gap-0.5 rounded-md px-2.5 py-1 transition-all duration-150 ${
         disabled
           ? "cursor-not-allowed opacity-30"
           : active
@@ -137,29 +137,105 @@ function SubHeader() {
     clearSelectedItems()
     toast.success("Deleted")
   }
+
+  // Helper to compress any image source into a < 1MB JPEG Data URI
+  const getCompressedDataUrl = useCallback(
+    async (src: string): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const img = new window.Image()
+        img.crossOrigin = "anonymous"
+        img.onload = () => {
+          let width = img.naturalWidth
+          let height = img.naturalHeight
+
+          // Cap max dimension to 4000 to drastically reduce pixel count
+          const MAX_DIM = 5000
+          if (width > MAX_DIM || height > MAX_DIM) {
+            const scale = Math.min(MAX_DIM / width, MAX_DIM / height)
+            width = Math.round(width * scale)
+            height = Math.round(height * scale)
+          }
+
+          const canvas = document.createElement("canvas")
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext("2d")
+          ctx?.drawImage(img, 0, 0, width, height)
+
+          let quality = 0.8
+          let dataUrl = canvas.toDataURL("image/jpeg", quality)
+
+          // Target ~1MB. 1,000,000 chars in base64 is roughly 750KB of binary data.
+          const MAX_BYTES = 1000000
+
+          // 1. Reduce quality progressively until under 1MB
+          while (dataUrl.length > MAX_BYTES && quality > 0.1) {
+            quality -= 0.1
+            dataUrl = canvas.toDataURL("image/jpeg", quality)
+          }
+
+          // 2. If it's STILL over 1MB (e.g. massive image), shrink dimensions
+          while (dataUrl.length > MAX_BYTES && width > 200) {
+            width = Math.round(width * 0.8)
+            height = Math.round(height * 0.8)
+            canvas.width = width
+            canvas.height = height
+            ctx?.drawImage(img, 0, 0, width, height)
+            dataUrl = canvas.toDataURL("image/jpeg", 0.5) // Hard compress
+          }
+          resolve(dataUrl)
+        }
+        img.onerror = reject
+        img.src = src
+      })
+    },
+    []
+  )
+
   // Handle URL Load
-  const handleLoadUrl = () => {
+  const handleLoadUrl = async () => {
     if (!imageUrlInput.trim()) {
       toast.error("Please enter a valid URL.")
       return
     }
+
     const targetCanvas =
       canvasRef && "current" in canvasRef ? canvasRef.current : canvasRef
-    if (targetCanvas && (targetCanvas as any).addImageToCanvas) {
-      const wVal = customWidthInput.trim() ? parseFloat(customWidthInput) : 30
-      const hVal = customHeightInput.trim() ? parseFloat(customHeightInput) : 30
 
-      ;(targetCanvas as any).addImageToCanvas({
-        src: imageUrlInput.trim(),
-        title: "Uploaded via Link",
-        uploadedFromSubheader: true,
-        customWidth: isNaN(wVal) ? 30 : wVal,
-        customHeight: isNaN(hVal) ? 30 : hVal,
-      })
-      toast.success("Image URL loaded to canvas!")
+    if (targetCanvas && (targetCanvas as any).addImageToCanvas) {
+      try {
+        toast.loading("Compressing image...", { id: "compress-toast" })
+
+        // Compress the URL image to a Data URI
+        const compressedDataUrl = await getCompressedDataUrl(
+          imageUrlInput.trim()
+        )
+
+        const wVal = customWidthInput.trim() ? parseFloat(customWidthInput) : 30
+        const hVal = customHeightInput.trim()
+          ? parseFloat(customHeightInput)
+          : 30
+
+        ;(targetCanvas as any).addImageToCanvas({
+          src: compressedDataUrl,
+          title: "Uploaded via Link",
+          uploadedFromSubheader: true,
+          customWidth: isNaN(wVal) ? 30 : wVal,
+          customHeight: isNaN(hVal) ? 30 : hVal,
+        })
+
+        toast.success("Image URL loaded and compressed!", {
+          id: "compress-toast",
+        })
+      } catch (err) {
+        toast.error("Failed to load or compress image from URL.", {
+          id: "compress-toast",
+        })
+      }
     } else {
       toast.error("Canvas element not ready.")
     }
+
     setImageUrlInput("")
     setCustomWidthInput("30")
     setCustomHeightInput("30")
@@ -167,17 +243,18 @@ function SubHeader() {
   }
 
   // Handle File Upload from Dialog
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const src = event.target?.result as string
-      if (!src) return
+    try {
+      // Use object URL for the compressor to read the file
+      const objectUrl = URL.createObjectURL(file)
+      const compressedDataUrl = await getCompressedDataUrl(objectUrl)
+      URL.revokeObjectURL(objectUrl) // Clean up memory
 
       const targetCanvas =
         canvasRef && "current" in canvasRef ? canvasRef.current : canvasRef
+
       if (targetCanvas && (targetCanvas as any).addImageToCanvas) {
         const wVal = customWidthInput.trim() ? parseFloat(customWidthInput) : 30
         const hVal = customHeightInput.trim()
@@ -185,25 +262,28 @@ function SubHeader() {
           : 30
 
         ;(targetCanvas as any).addImageToCanvas({
-          src,
+          src: compressedDataUrl, // Pass the compressed Data URI directly
           title: file.name,
           uploadedFromSubheader: true,
           customWidth: isNaN(wVal) ? 30 : wVal,
           customHeight: isNaN(hVal) ? 30 : hVal,
         })
-        toast.success(`Loaded file: ${file.name}`)
+        toast.success(`Loaded and compressed file: ${file.name}`)
       } else {
         toast.error("Canvas element not ready.")
       }
+    } catch (err) {
+      console.error("File upload compression failed:", err)
+      toast.error("Failed to process image upload.")
     }
-    reader.readAsDataURL(file)
+
     setCustomWidthInput("30")
     setCustomHeightInput("30")
     setIsUploadOpen(false)
   }
 
   return (
-    <div className="subheader-wrapper flex w-full items-center border-b bg-white px-4 py-1.5 gap-4">
+    <div className="subheader-wrapper flex w-full items-center gap-4 border-b bg-white px-4 py-1.5">
       {/* Left: Pillow Selector + Product Filter */}
       <div className="flex min-w-90 shrink-0 items-center gap-2">
         <PillowSelector
@@ -260,9 +340,18 @@ function SubHeader() {
             {selectedSubheaderImage.uploadedFromSubheader && (
               <ToolbarButton
                 onClick={() => {
-                  const targetCanvas = canvasRef && "current" in canvasRef ? canvasRef.current : canvasRef
-                  if (targetCanvas && (targetCanvas as any).handleRemoveBackground) {
-                    ; (targetCanvas as any).handleRemoveBackground(selectedSubheaderImage.id, selectedSubheaderImage.src)
+                  const targetCanvas =
+                    canvasRef && "current" in canvasRef
+                      ? canvasRef.current
+                      : canvasRef
+                  if (
+                    targetCanvas &&
+                    (targetCanvas as any).handleRemoveBackground
+                  ) {
+                    ;(targetCanvas as any).handleRemoveBackground(
+                      selectedSubheaderImage.id,
+                      selectedSubheaderImage.src
+                    )
                     toast.success("Removing background...")
                   } else {
                     toast.error("Background removal not ready.")
@@ -277,17 +366,27 @@ function SubHeader() {
             )}
             <ToolbarButton
               onClick={() => {
-                const isCurrentlyResizing = resizingImageId !== null && String(resizingImageId) === String(selectedSubheaderImage.id)
-                setResizingImageId(isCurrentlyResizing ? null : selectedSubheaderImage.id)
+                const isCurrentlyResizing =
+                  resizingImageId !== null &&
+                  String(resizingImageId) === String(selectedSubheaderImage.id)
+                setResizingImageId(
+                  isCurrentlyResizing ? null : selectedSubheaderImage.id
+                )
               }}
               icon={Maximize}
               label="Resize"
               title="Toggle resize handles for this image"
-              active={resizingImageId !== null && String(resizingImageId) === String(selectedSubheaderImage.id)}
+              active={
+                resizingImageId !== null &&
+                String(resizingImageId) === String(selectedSubheaderImage.id)
+              }
             />
             <ToolbarButton
               onClick={() => {
-                const targetCanvas = canvasRef && "current" in canvasRef ? canvasRef.current : canvasRef
+                const targetCanvas =
+                  canvasRef && "current" in canvasRef
+                    ? canvasRef.current
+                    : canvasRef
                 if (targetCanvas && (targetCanvas as any).startCrop) {
                   ;(targetCanvas as any).startCrop(selectedSubheaderImage.id)
                 } else {
@@ -370,7 +469,7 @@ function SubHeader() {
               </DialogTitle>
               <DialogDescription className="mt-1 text-sm text-gray-500">
                 Upload a local file or paste a web URL link to place it on the
-                canvas.
+                canvas. Images are auto-compressed for performance.
               </DialogDescription>
             </DialogHeader>
 

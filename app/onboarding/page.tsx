@@ -115,11 +115,57 @@ export default function SettingsOnboardingForm() {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
+  // Helper to compress any image source into a < 1MB JPEG Data URI
+  const getCompressedDataUrl = useCallback(
+    async (src: string): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const img = new window.Image()
+        img.crossOrigin = "anonymous"
+        img.onload = () => {
+          let width = img.naturalWidth
+          let height = img.naturalHeight
+          const MAX_DIM = 5000
+          if (width > MAX_DIM || height > MAX_DIM) {
+            const scale = Math.min(MAX_DIM / width, MAX_DIM / height)
+            width = Math.round(width * scale)
+            height = Math.round(height * scale)
+          }
+          const canvas = document.createElement("canvas")
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext("2d")
+          ctx?.drawImage(img, 0, 0, width, height)
+          let quality = 0.8
+          let dataUrl = canvas.toDataURL("image/jpeg", quality)
+          // Target ~1MB. 1,000,000 chars in base64 is roughly 750KB of binary data.
+          const MAX_BYTES = 1000000
+          // 1. Reduce quality progressively until under 1MB
+          while (dataUrl.length > MAX_BYTES && quality > 0.1) {
+            quality -= 0.1
+            dataUrl = canvas.toDataURL("image/jpeg", quality)
+          }
+          // 2. If it's STILL over 1MB (e.g. massive image), shrink dimensions
+          while (dataUrl.length > MAX_BYTES && width > 200) {
+            width = Math.round(width * 0.8)
+            height = Math.round(height * 0.8)
+            canvas.width = width
+            canvas.height = height
+            ctx?.drawImage(img, 0, 0, width, height)
+            dataUrl = canvas.toDataURL("image/jpeg", 0.5) // Hard compress
+          }
+          resolve(dataUrl)
+        }
+        img.onerror = reject
+        img.src = src
+      })
+    },
+    []
+  )
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file && file.type.startsWith("image/")) {
-      updateFormData("spaceImage", file)
-      updateFormData("imagePreview", URL.createObjectURL(file))
+      loadImageFile(file)
     } else {
       toast.error("Please upload an image file")
     }
@@ -133,43 +179,58 @@ export default function SettingsOnboardingForm() {
   }
 
   // Load an image file into formData (shared by file input, drag-drop, and paste)
-  const loadImageFile = useCallback((file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please provide an image file")
-      return
-    }
-    updateFormData("spaceImage", file)
-    updateFormData("imagePreview", URL.createObjectURL(file))
-  }, [])
+  const loadImageFile = useCallback(
+    async (file: File) => {
+      if (!file.type.startsWith("image/")) {
+        toast.error("Please provide an image file")
+        return
+      }
+      try {
+        // Convert file to Blob URL for the Image element to process
+        const blobUrl = URL.createObjectURL(file)
+        const compressedDataUrl = await getCompressedDataUrl(blobUrl)
+        URL.revokeObjectURL(blobUrl) // Clean up memory
+
+        // Reconstruct a new lightweight File object from the compressed Data URI
+        const res = await fetch(compressedDataUrl)
+        const blob = await res.blob()
+        const compressedFile = new File(
+          [blob],
+          file.name.replace(/\.[^.]+$/, ".jpg"),
+          { type: "image/jpeg" }
+        )
+
+        updateFormData("spaceImage", compressedFile)
+        updateFormData("imagePreview", compressedDataUrl) // Store the tiny Data URI directly
+      } catch (err) {
+        toast.error("Failed to process image")
+      }
+    },
+    [getCompressedDataUrl]
+  )
 
   // Load an image from a URL string
-  const loadImageFromUrl = useCallback((url: string) => {
-    // Create a temporary image to validate the URL
-    const img = new window.Image()
-    img.crossOrigin = "anonymous"
-    img.onload = () => {
-      // Convert to blob for File object
-      const canvas = document.createElement("canvas")
-      canvas.width = img.naturalWidth
-      canvas.height = img.naturalHeight
-      const ctx = canvas.getContext("2d")
-      ctx?.drawImage(img, 0, 0)
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const file = new File([blob], "pasted-image.png", {
-            type: "image/png",
-          })
-          updateFormData("spaceImage", file)
-          updateFormData("imagePreview", url)
-          toast.success("Image loaded from URL!")
-        }
-      }, "image/png")
-    }
-    img.onerror = () => {
-      toast.error("Failed to load image from URL")
-    }
-    img.src = url
-  }, [])
+  const loadImageFromUrl = useCallback(
+    async (url: string) => {
+      try {
+        const compressedDataUrl = await getCompressedDataUrl(url)
+
+        // Reconstruct a lightweight File object
+        const res = await fetch(compressedDataUrl)
+        const blob = await res.blob()
+        const file = new File([blob], "pasted-image.jpg", {
+          type: "image/jpeg",
+        })
+
+        updateFormData("spaceImage", file)
+        updateFormData("imagePreview", compressedDataUrl)
+        toast.success("Image loaded from URL!")
+      } catch (err) {
+        toast.error("Failed to load image from URL")
+      }
+    },
+    [getCompressedDataUrl]
+  )
 
   // Drag-and-drop handlers for step 3
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -252,12 +313,12 @@ export default function SettingsOnboardingForm() {
   }, [currentStep, loadImageFile, loadImageFromUrl])
 
   // Crop dialog logic
-  const handleCropApply = useCallback(() => {
+  const handleCropApply = useCallback(async () => {
     if (!formData.imagePreview) return
 
     const img = new window.Image()
     img.crossOrigin = "anonymous"
-    img.onload = () => {
+    img.onload = async () => {
       const canvas = document.createElement("canvas")
       const sx = Math.round((cropValues.left / 100) * img.naturalWidth)
       const sy = Math.round((cropValues.top / 100) * img.naturalHeight)
@@ -271,27 +332,32 @@ export default function SettingsOnboardingForm() {
         toast.error("Invalid crop area")
         return
       }
+
       canvas.width = sw
       canvas.height = sh
       const ctx = canvas.getContext("2d")
       if (!ctx) return
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const croppedFile = new File([blob], "cropped-reference.png", {
-            type: "image/png",
-          })
-          const newPreviewUrl = URL.createObjectURL(blob)
-          updateFormData("spaceImage", croppedFile)
-          updateFormData("imagePreview", newPreviewUrl)
-          setIsCropDialogOpen(false)
-          setCropValues({ top: 0, bottom: 0, left: 0, right: 0 })
-          toast.success("Image cropped!")
-        }
-      }, "image/png")
+
+      // Get raw cropped Data URI, then compress it to < 1MB
+      const rawCroppedDataUrl = canvas.toDataURL("image/jpeg", 0.9)
+      const compressedDataUrl = await getCompressedDataUrl(rawCroppedDataUrl)
+
+      // Reconstruct File object
+      const res = await fetch(compressedDataUrl)
+      const blob = await res.blob()
+      const croppedFile = new File([blob], "cropped-reference.jpg", {
+        type: "image/jpeg",
+      })
+
+      updateFormData("spaceImage", croppedFile)
+      updateFormData("imagePreview", compressedDataUrl)
+      setIsCropDialogOpen(false)
+      setCropValues({ top: 0, bottom: 0, left: 0, right: 0 })
+      toast.success("Image cropped and compressed!")
     }
     img.src = formData.imagePreview
-  }, [formData.imagePreview, cropValues])
+  }, [formData.imagePreview, cropValues, getCompressedDataUrl])
 
   const nextStep = () =>
     currentStep < steps.length - 1 && setCurrentStep((prev) => prev + 1)
@@ -446,7 +512,10 @@ export default function SettingsOnboardingForm() {
             })
           })
           .catch((err) => {
-            console.error("Failed to remove background for onboarding pillow:", err)
+            console.error(
+              "Failed to remove background for onboarding pillow:",
+              err
+            )
             updateCanvasImage(newId, { isProcessing: false })
           })
       }
@@ -609,11 +678,11 @@ export default function SettingsOnboardingForm() {
                               </div>
                             </div>
                           ) : (
-                            <div className="relative h-[220px] w-full overflow-hidden rounded-2xl border bg-slate-900 flex items-center justify-center">
+                            <div className="relative flex h-55 w-full items-center justify-center overflow-hidden rounded-2xl border bg-slate-900">
                               <img
                                 src={formData.imagePreview}
                                 alt="Space preview"
-                                className="h-[-webkit-fill-available] max-w-full max-h-full object-contain"
+                                className="h-[-webkit-fill-available] max-h-full max-w-full object-contain"
                               />
                               <div className="absolute top-2 right-2 flex gap-1.5">
                                 <Button
