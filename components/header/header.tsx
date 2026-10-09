@@ -1,15 +1,15 @@
-"use client"
-import { Badge } from "../ui/badge"
-import useMoodboardStore from "@/lib/store/moodboardstore"
-import DownloadButton from "./downloadbutton"
-import Settings from "./settings"
-import Image from "next/image"
+"use client";
+import { Badge } from "../ui/badge";
+import useMoodboardStore from "@/lib/store/moodboardstore";
+import DownloadButton from "./downloadbutton";
+import Settings from "./settings";
+import Image from "next/image";
 
 const Header = () => {
-  const { region } = useMoodboardStore()
+  const { region } = useMoodboardStore();
 
   return (
-    <div className="border-b p-5">
+    <div id="header" className="border-b p-5">
       <div className="m-auto flex max-w-[90%] flex-row items-start justify-between md:items-center">
         <div className="flex items-center gap-2">
           <Image
@@ -39,7 +39,7 @@ const Header = () => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Header
+export default Header;

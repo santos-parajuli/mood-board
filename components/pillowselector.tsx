@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useRef } from "react"
-import { Check, Search, X } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
+import { useState, useEffect, useRef } from "react";
+import { Check, Search, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Command,
   CommandEmpty,
@@ -12,18 +12,21 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command"
+} from "@/components/ui/command";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"
-import { toast } from "sonner"
-import { cn } from "@/lib/utils"
-import { fetchAllShopifyProducts } from "@/lib/shopify/client"
-import useMoodboardStore from "@/lib/store/moodboardstore"
+} from "@/components/ui/popover";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { fetchAllShopifyProducts } from "@/lib/shopify/client";
+import useMoodboardStore from "@/lib/store/moodboardstore";
 
-import { PillowSelectorProps, mapShopifyProductToPillowItem } from "@/lib/types"
+import {
+  PillowSelectorProps,
+  mapShopifyProductToPillowItem,
+} from "@/lib/types";
 
 export function PillowSelector({
   selectedPillows,
@@ -31,12 +34,12 @@ export function PillowSelector({
   maxSelections,
   showSelectedPillows = true,
 }: PillowSelectorProps) {
-  const [openPopover, setOpenPopover] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [openPopover, setOpenPopover] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<
     "pillow" | "ottoman" | "throw" | "fabric" | "hardware"
-  >("pillow")
-  const listRef = useRef<HTMLDivElement>(null)
+  >("pillow");
+  const listRef = useRef<HTMLDivElement>(null);
 
   const {
     allPillowData,
@@ -44,144 +47,147 @@ export function PillowSelector({
     filterPatterns,
     filterColours,
     filterMaterials,
-  } = useMoodboardStore()
+  } = useMoodboardStore();
 
   // Always reset to 'pillow' category whenever popover opens or closes
   const handleOpenChange = (open: boolean) => {
-    setOpenPopover(open)
+    setOpenPopover(open);
     if (open) {
-      setActiveCategory("pillow")
+      setActiveCategory("pillow");
     }
-  }
+  };
 
   // Helper handler for category tab clicks
   const handleCategoryChange = (
-    cat: "pillow" | "ottoman" | "throw" | "fabric" | "hardware"
+    cat: "pillow" | "ottoman" | "throw" | "fabric" | "hardware",
   ) => {
-    setActiveCategory(cat)
-    listRef.current?.scrollTo({ top: 0 })
-  }
+    setActiveCategory(cat);
+    listRef.current?.scrollTo({ top: 0 });
+  };
   // Add this ref at the top with your other hooks
-  const attemptedFetches = useRef<Set<string>>(new Set())
+  const attemptedFetches = useRef<Set<string>>(new Set());
   // FETCH ON CATEGORY CLICK
   useEffect(() => {
     // 1. CACHING: Check if we already have data for this category in Zustand
     const hasData = useMoodboardStore
       .getState()
-      .allPillowData.some((item) => item.category === activeCategory)
+      .allPillowData.some((item) => item.category === activeCategory);
 
     // 2. If we have data, OR we already attempted to fetch it, don't fetch again
     if (hasData || attemptedFetches.current.has(activeCategory)) {
-      setIsLoading(false)
-      return
+      setIsLoading(false);
+      return;
     }
 
     // Mark as fetched immediately so rapid clicks don't trigger double fetches
-    attemptedFetches.current.add(activeCategory)
+    attemptedFetches.current.add(activeCategory);
 
     async function fetchCategory() {
-      setIsLoading(true)
+      setIsLoading(true);
       try {
         // 3. Define specific query for the active category
-        let query = "status:active"
+        let query = "status:active";
         if (activeCategory === "pillow") {
-          query = "status:active AND (tag:pillow AND title:*Pillow*)"
+          query = "status:active AND (tag:pillow AND title:*Pillow*)";
         } else if (activeCategory === "ottoman") {
-          query = "status:active AND (tag:ottoman AND title:*Ottoman*)"
+          query = "status:active AND (tag:ottoman AND title:*Ottoman*)";
         } else if (activeCategory === "throw") {
-          query = "status:active AND (tag:throw AND title:*Throw*)"
+          query = "status:active AND (tag:throw AND title:*Throw*)";
         } else if (activeCategory === "fabric") {
-          query = "status:active AND (tag:fabric AND title:*Fabric*)"
+          query = "status:active AND (tag:fabric AND title:*Fabric*)";
         } else if (activeCategory === "hardware") {
-          query = "status:active AND tag:hardware"
+          query = "status:active AND tag:hardware";
         }
 
-        const products = await fetchAllShopifyProducts(query)
+        const products = await fetchAllShopifyProducts(query);
 
         // 4. Filter out products that do not have a valid image URL
         const productsWithImages = products.filter((product) => {
           return (
             Boolean(product.featuredImage?.url) ||
             Boolean(product.images?.nodes?.[0]?.url)
-          )
-        })
+          );
+        });
         console.log(
-          `Fetching products for category: ${activeCategory}, total products found: ${productsWithImages.length}`
-        )
+          `Fetching products for category: ${activeCategory}, total products found: ${productsWithImages.length}`,
+        );
 
         // 5. Map to frontend model
         let mappedPillows = productsWithImages.map(
-          mapShopifyProductToPillowItem
-        )
+          mapShopifyProductToPillowItem,
+        );
         // 5. Force the category to match the active tab.
         mappedPillows = mappedPillows.map((p) => ({
           ...p,
           category: activeCategory,
-        }))
+        }));
 
         // Fetch Custom Google Sheet Pillows if active category is 'pillow'
         if (activeCategory === "pillow") {
           try {
-            const res = await fetch("/api/custom-pillows")
+            const res = await fetch("/api/custom-pillows");
             if (res.ok) {
-              const data = await res.json()
+              const data = await res.json();
               if (Array.isArray(data?.pillows)) {
                 console.log(
-                  `[PillowSelector] Fetched ${data.pillows.length} custom pillows from Google Sheets`
-                )
-                mappedPillows = [...mappedPillows, ...data.pillows]
+                  `[PillowSelector] Fetched ${data.pillows.length} custom pillows from Google Sheets`,
+                );
+                mappedPillows = [...mappedPillows, ...data.pillows];
               }
             }
           } catch (gsErr) {
-            console.error("Failed fetching custom Google Sheet pillows:", gsErr)
+            console.error(
+              "Failed fetching custom Google Sheet pillows:",
+              gsErr,
+            );
           }
         }
 
         console.log(
-          `[PillowSelector] Fetched ${mappedPillows.length} items for category: ${activeCategory}`
-        )
+          `[PillowSelector] Fetched ${mappedPillows.length} items for category: ${activeCategory}`,
+        );
         // 6. Safely get latest state and merge with deduplication.
-        const currentData = useMoodboardStore.getState().allPillowData
-        const mergedMap = new Map()
-        currentData.forEach((item) => mergedMap.set(item.id, item))
-        mappedPillows.forEach((item) => mergedMap.set(item.id, item))
-        const finalData = Array.from(mergedMap.values())
-        setallPillowData(finalData)
+        const currentData = useMoodboardStore.getState().allPillowData;
+        const mergedMap = new Map();
+        currentData.forEach((item) => mergedMap.set(item.id, item));
+        mappedPillows.forEach((item) => mergedMap.set(item.id, item));
+        const finalData = Array.from(mergedMap.values());
+        setallPillowData(finalData);
       } catch (err) {
-        console.error("Error pulling database inventory from Shopify:", err)
-        toast.error("Failed loading product inventory from Shopify.")
+        console.error("Error pulling database inventory from Shopify:", err);
+        toast.error("Failed loading product inventory from Shopify.");
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
     }
 
-    fetchCategory()
-  }, [activeCategory, setallPillowData])
+    fetchCategory();
+  }, [activeCategory, setallPillowData]);
 
   // Apply category tab filter AND active pattern/colour/material filters
   const filteredProducts = allPillowData.filter((item) => {
-    if (item.category !== activeCategory) return false
+    if (item.category !== activeCategory) return false;
 
     // Pattern check: Item's pattern array must contain at least one of the selected filterPatterns
     if (filterPatterns.length > 0) {
       if (!Array.isArray(item.pattern) || item.pattern.length === 0) {
-        return false
+        return false;
       }
       const hasPatternMatch = item.pattern.some((p: string) =>
-        filterPatterns.includes(p.trim())
-      )
-      if (!hasPatternMatch) return false
+        filterPatterns.includes(p.trim()),
+      );
+      if (!hasPatternMatch) return false;
     }
 
     // Colour check: Item's colour array must contain at least one of the selected filterColours
     if (filterColours.length > 0) {
       if (!Array.isArray(item.colour) || item.colour.length === 0) {
-        return false
+        return false;
       }
       const hasColourMatch = item.colour.some((c: string) =>
-        filterColours.includes(c.trim())
-      )
-      if (!hasColourMatch) return false
+        filterColours.includes(c.trim()),
+      );
+      if (!hasColourMatch) return false;
     }
 
     // Material check: Item's fabricMaterial array must contain at least one of the selected filterMaterials
@@ -190,34 +196,34 @@ export function PillowSelector({
         !Array.isArray(item.fabricMaterial) ||
         item.fabricMaterial.length === 0
       ) {
-        return false
+        return false;
       }
       const hasMaterialMatch = item.fabricMaterial.some((m: string) =>
-        filterMaterials.includes(m.trim())
-      )
-      if (!hasMaterialMatch) return false
+        filterMaterials.includes(m.trim()),
+      );
+      if (!hasMaterialMatch) return false;
     }
 
-    return true
-  })
+    return true;
+  });
 
   const isMaxReached =
-    maxSelections !== undefined && selectedPillows.length >= maxSelections
+    maxSelections !== undefined && selectedPillows.length >= maxSelections;
 
   const handlePillowSelect = (pillowId: string) => {
-    const isAlreadySelected = selectedPillows.includes(pillowId)
+    const isAlreadySelected = selectedPillows.includes(pillowId);
     if (isAlreadySelected) {
-      onChange(selectedPillows.filter((id) => id !== pillowId))
+      onChange(selectedPillows.filter((id) => id !== pillowId));
     } else {
       if (isMaxReached) {
         toast.error(
-          `Maximum ${maxSelections} items can be selected for this moodboard`
-        )
-        return
+          `Maximum ${maxSelections} items can be selected for this moodboard`,
+        );
+        return;
       }
-      onChange([...selectedPillows, pillowId])
+      onChange([...selectedPillows, pillowId]);
     }
-  }
+  };
 
   return (
     <Popover open={openPopover} onOpenChange={handleOpenChange}>
@@ -232,7 +238,7 @@ export function PillowSelector({
           {showSelectedPillows && selectedPillows.length > 0 && (
             <div className="flex w-full flex-wrap gap-1.5">
               {selectedPillows.map((id) => {
-                const matchedPillow = allPillowData.find((p) => p.id === id)
+                const matchedPillow = allPillowData.find((p) => p.id === id);
                 return (
                   <Badge
                     key={id}
@@ -242,15 +248,15 @@ export function PillowSelector({
                     {matchedPillow?.name || "Item"}
                     <span
                       onClick={(e) => {
-                        e.stopPropagation()
-                        handlePillowSelect(id)
+                        e.stopPropagation();
+                        handlePillowSelect(id);
                       }}
                       className="cursor-pointer rounded-sm p-0.5 hover:bg-muted-foreground/20"
                     >
                       <X className="h-3 w-3" />
                     </span>
                   </Badge>
-                )
+                );
               })}
             </div>
           )}
@@ -276,20 +282,21 @@ export function PillowSelector({
       >
         <Command className="rounded-none">
           <CommandInput
-            placeholder={`Type name to filter ${activeCategory === "pillow"
-              ? "pillows"
-              : activeCategory === "ottoman"
-                ? "ottomans"
-                : activeCategory === "throw"
-                  ? "throws"
-                  : activeCategory === "fabric"
-                    ? "fabrics"
-                    : "hardware"
-              } instantly...`}
+            placeholder={`Type name to filter ${
+              activeCategory === "pillow"
+                ? "pillows"
+                : activeCategory === "ottoman"
+                  ? "ottomans"
+                  : activeCategory === "throw"
+                    ? "throws"
+                    : activeCategory === "fabric"
+                      ? "fabrics"
+                      : "hardware"
+            } instantly...`}
             className="h-11 text-xs"
             onValueChange={() => {
               // Scroll results back to top on every keystroke
-              listRef.current?.scrollTo({ top: 0 })
+              listRef.current?.scrollTo({ top: 0 });
             }}
           />
           <div className="flex items-center gap-1.5 overflow-hidden border-b px-3 py-2 text-xs">
@@ -299,7 +306,7 @@ export function PillowSelector({
                 "cursor-pointer transition-colors select-none",
                 activeCategory === "pillow"
                   ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
               )}
             >
               Pillows
@@ -310,7 +317,7 @@ export function PillowSelector({
                 "cursor-pointer transition-colors select-none",
                 activeCategory === "ottoman"
                   ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
               )}
             >
               Ottomans
@@ -321,7 +328,7 @@ export function PillowSelector({
                 "cursor-pointer transition-colors select-none",
                 activeCategory === "throw"
                   ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
               )}
             >
               Throws
@@ -332,7 +339,7 @@ export function PillowSelector({
                 "cursor-pointer transition-colors select-none",
                 activeCategory === "fabric"
                   ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
               )}
             >
               Fabrics
@@ -343,7 +350,7 @@ export function PillowSelector({
                 "cursor-pointer transition-colors select-none",
                 activeCategory === "hardware"
                   ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                  : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
               )}
             >
               Hardware
@@ -374,7 +381,7 @@ export function PillowSelector({
                 </CommandEmpty>
                 <CommandGroup>
                   {filteredProducts.map((pillow) => {
-                    const isSelected = selectedPillows.includes(pillow.id)
+                    const isSelected = selectedPillows.includes(pillow.id);
                     return (
                       <CommandItem
                         key={pillow.id}
@@ -394,7 +401,6 @@ export function PillowSelector({
                             <span className="text-xs font-medium text-foreground">
                               {pillow.name}
                             </span>
-
                           </div>
                         </div>
                         <div
@@ -402,7 +408,7 @@ export function PillowSelector({
                             "flex h-4 w-4 shrink-0 items-center justify-center rounded-md border transition-colors",
                             isSelected
                               ? "border-primary bg-primary text-primary-foreground"
-                              : "border-muted-foreground/30"
+                              : "border-muted-foreground/30",
                           )}
                         >
                           {isSelected && (
@@ -410,7 +416,7 @@ export function PillowSelector({
                           )}
                         </div>
                       </CommandItem>
-                    )
+                    );
                   })}
                 </CommandGroup>
               </>
@@ -419,5 +425,5 @@ export function PillowSelector({
         </Command>
       </PopoverContent>
     </Popover>
-  )
+  );
 }
